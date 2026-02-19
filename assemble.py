@@ -1,8 +1,10 @@
 import os
 from pydub import AudioSegment
 
-dataset_dir = "Datasets/00 Dummy"
-output_dir = "Datasets/00 Dummy/output"
+dataset = "/00 Dummy"
+
+dataset_dir = "Datasets/" + dataset
+output_dir = f"Datasets/{dataset}/output"
 os.makedirs(output_dir, exist_ok=True)
 
 prefix = AudioSegment.from_file(os.path.join(dataset_dir, "ne sam siguren no mislq che.m4a"))
