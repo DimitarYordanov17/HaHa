@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import engine, Base, get_db
 from app.models import User
 from app.auth import hash_password, verify_password, create_access_token
+from app.dependencies import get_current_user
 
 app = FastAPI()
 
@@ -19,11 +21,6 @@ async def on_startup():
 # ---------- schemas ----------
 
 class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
@@ -50,10 +47,15 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    user = await db.scalar(select(User).where(User.email == body.email))
-    if not user or not verify_password(body.password, user.hashed_password):
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+    user = await db.scalar(select(User).where(User.email == form_data.username))
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token(str(user.id))
     return TokenResponse(access_token=token)
+
+
+@app.get("/me")
+async def me(current_user: User = Depends(get_current_user)):
+    return {"id": current_user.id, "email": current_user.email}
