@@ -1,6 +1,7 @@
 package com.example.haha
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Button
@@ -24,10 +25,34 @@ class LoginActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
 
-        val etEmail    = findViewById<EditText>(R.id.etEmail)
-        val etPassword = findViewById<EditText>(R.id.etPassword)
-        val btnLogin   = findViewById<Button>(R.id.btnLogin)
+        val etEmail     = findViewById<EditText>(R.id.etEmail)
+        val etPassword  = findViewById<EditText>(R.id.etPassword)
+        val btnLogin    = findViewById<Button>(R.id.btnLogin)
         val tvUserEmail = findViewById<TextView>(R.id.tvUserEmail)
+
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val savedToken = prefs.getString(KEY_TOKEN, null)
+
+        if (savedToken != null) {
+            RetrofitClient.api.me("Bearer $savedToken").enqueue(object : Callback<MeResponse> {
+                override fun onResponse(call: Call<MeResponse>, response: Response<MeResponse>) {
+                    if (response.isSuccessful) {
+                        Log.d(TAG, "Auto-login successful, starting MainActivity")
+                        startActivity(Intent(this@LoginActivity, MainActivity::class.java))
+                        finish()
+                    } else if (response.code() == 401) {
+                        Log.w(TAG, "Saved token is invalid (401), clearing token")
+                        prefs.edit().remove(KEY_TOKEN).apply()
+                    } else {
+                        Log.e(TAG, "Auto-login /me error ${response.code()}: ${response.errorBody()?.string()}")
+                    }
+                }
+
+                override fun onFailure(call: Call<MeResponse>, t: Throwable) {
+                    Log.e(TAG, "Auto-login /me request failed: ${t.message}", t)
+                }
+            })
+        }
 
         btnLogin.setOnClickListener {
             val email    = etEmail.text.toString().trim()
@@ -54,7 +79,8 @@ class LoginActivity : AppCompatActivity() {
                                 if (response.isSuccessful) {
                                     val email = response.body()?.email
                                     Log.d(TAG, "Logged in as: $email")
-                                    tvUserEmail.text = email
+                                    startActivity(Intent(this@LoginActivity, MainActivity::class.java))
+                                    finish()
                                 } else {
                                     Log.e(TAG, "/me error ${response.code()}: ${response.errorBody()?.string()}")
                                 }
