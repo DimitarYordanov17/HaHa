@@ -1,4 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends
+import os
+
+import httpx
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -54,3 +57,28 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
 @app.get("/me")
 async def me(current_user: User = Depends(get_current_user)):
     return {"id": current_user.id, "email": current_user.email}
+
+
+# ---------- telnyx webhooks ----------
+
+@app.post("/webhooks/telnyx", status_code=200)
+async def telnyx_webhook(request: Request):
+    body = await request.json()
+    event_type = body.get("data", {}).get("event_type")
+
+    print("body")
+
+    if event_type == "call.answered":
+        call_control_id = body["data"]["payload"]["call_control_id"]
+        api_key = os.environ["TELNYX_API_KEY"]
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/playback_start",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"},
+            )
+            response.raise_for_status()
+
+    return {"status": "ok"}
+
