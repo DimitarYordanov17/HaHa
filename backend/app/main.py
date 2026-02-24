@@ -1,16 +1,22 @@
+import base64
+import json
 import os
+from uuid import UUID
 
-import httpx
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import engine, Base, get_db
+from app.database import get_db
 from app.models import User
 from app.auth import hash_password, verify_password, create_access_token
 from app.dependencies import get_current_user
+from app.services.prank_orchestrator import PrankOrchestrator, PrankEventType
+from app.services.prank_session_service import PrankSessionService
+from app.services.telnyx_call_service import TelnyxCallService
+from app.models.prank_session import PrankSessionState
 
 from fastapi.staticfiles import StaticFiles
 
@@ -62,24 +68,67 @@ async def me(current_user: User = Depends(get_current_user)):
 
 # ---------- telnyx webhooks ----------
 
+_TELNYX_EVENT_MAP = {
+    "call.answered": PrankEventType.LEG_ANSWERED,
+    "call.hangup": PrankEventType.LEG_HANGUP,
+    "call.failed": PrankEventType.LEG_FAILED,
+}
+
+
 @app.post("/webhooks/telnyx", status_code=200)
-async def telnyx_webhook(request: Request):
+async def telnyx_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     body = await request.json()
-    event_type = body.get("data", {}).get("event_type")
+    data = body["data"]
+    event_type = data.get("event_type")
 
-    print("body")
+    prank_event = _TELNYX_EVENT_MAP.get(event_type)
+    if prank_event is None:
+        return {"status": "ignored"}
 
-    if event_type == "call.answered":
-        call_control_id = body["data"]["payload"]["call_control_id"]
-        api_key = os.environ["TELNYX_API_KEY"]
+    payload = data["payload"]
+    call_control_id = payload["call_control_id"]
+    client_state = json.loads(base64.b64decode(payload["client_state"]))
+    leg = client_state["leg"]
+    session_id = UUID(client_state["session_id"])
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/playback_start",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"audio_url": "https://uncabled-zina-fusilly.ngrok-free.dev/static/test.mp3"},
-            )
-            response.raise_for_status()
+    orchestrator = PrankOrchestrator(db)
+    await orchestrator.handle_event(
+        session_id=session_id,
+        event_type=prank_event,
+        leg=leg,
+        call_control_id=call_control_id,
+    )
 
     return {"status": "ok"}
+
+
+# ---------- dev endpoints ----------
+
+class StartPrankRequest(BaseModel):
+    sender_phone: str
+    recipient_phone: str
+
+
+@app.post("/dev/start-prank", status_code=200)
+async def dev_start_prank(
+    body: StartPrankRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    service = PrankSessionService(db)
+    session = await service.create_session(
+        sender_number=body.sender_phone,
+        recipient_number=body.recipient_phone,
+    )
+    await service.transition_state(session, PrankSessionState.CALLING_SENDER)
+
+    telnyx = TelnyxCallService()
+    await telnyx.create_outbound_call(
+        to_number=body.sender_phone,
+        from_number=os.environ["TELNYX_NUMBER"],
+        session_id=session.id,
+        leg="sender",
+    )
+
+    return {"session_id": session.id}
 
