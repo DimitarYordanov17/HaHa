@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.prank_session import PrankSessionState
 from app.services.prank_session_service import PrankSessionService
+from app.services.telnyx_call_service import TelnyxCallService
 
 
 class PrankEventType(str, Enum):
@@ -17,6 +18,7 @@ class PrankEventType(str, Enum):
 class PrankOrchestrator:
     def __init__(self, db: AsyncSession) -> None:
         self.service = PrankSessionService(db)
+        self.telnyx = TelnyxCallService()
 
     async def handle_event(
         self,
@@ -35,6 +37,12 @@ class PrankOrchestrator:
             if event_type == PrankEventType.LEG_ANSWERED and leg == "sender":
                 await self.service.set_call_control_id(session, "sender", call_control_id)
                 await self.service.transition_state(session, PrankSessionState.CALLING_RECIPIENT)
+                await self.telnyx.create_outbound_call(
+                    to_number=session.recipient_number,
+                    from_number=session.sender_number,
+                    session_id=session.id,
+                    leg="recipient",
+                )
             elif event_type == PrankEventType.LEG_FAILED and leg == "sender":
                 await self.service.transition_state(session, PrankSessionState.FAILED)
             else:
@@ -45,8 +53,15 @@ class PrankOrchestrator:
         elif state == PrankSessionState.CALLING_RECIPIENT:
             if event_type == PrankEventType.LEG_ANSWERED and leg == "recipient":
                 await self.service.set_call_control_id(session, "recipient", call_control_id)
+                sender_call_control_id = session.sender_call_control_id
                 await self.service.transition_state(session, PrankSessionState.BRIDGED)
+                try:
+                    await self.telnyx.bridge_calls(sender_call_control_id, call_control_id)
+                except Exception:
+                    await self.service.transition_state(session, PrankSessionState.FAILED)
+                    return
                 await self.service.transition_state(session, PrankSessionState.PLAYING_AUDIO)
+                await self.telnyx.start_playback(sender_call_control_id)
             elif event_type == PrankEventType.LEG_FAILED and leg == "recipient":
                 await self.service.transition_state(session, PrankSessionState.FAILED)
             elif event_type == PrankEventType.LEG_HANGUP and leg == "sender":
@@ -70,9 +85,7 @@ class PrankOrchestrator:
                 )
 
         elif state in (PrankSessionState.FAILED, PrankSessionState.COMPLETED):
-            raise ValueError(
-                f"No events allowed in terminal state {state.value}"
-            )
+            print("call finished")
 
         else:
             raise ValueError(
