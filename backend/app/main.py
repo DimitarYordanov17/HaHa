@@ -12,10 +12,11 @@ from app.models import User
 from app.auth import hash_password, verify_password, create_access_token
 from app.dependencies import get_current_user
 
+from fastapi.staticfiles import StaticFiles
+
 app = FastAPI()
 
-
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 # ---------- schemas ----------
 
 class RegisterRequest(BaseModel):
@@ -76,7 +77,7 @@ async def telnyx_webhook(request: Request):
             response = await client.post(
                 f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/playback_start",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"},
+                json={"audio_url": "https://uncabled-zina-fusilly.ngrok-free.dev/static/test.mp3"},
             )
             response.raise_for_status()
 
