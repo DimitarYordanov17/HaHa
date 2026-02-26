@@ -1,6 +1,8 @@
 import base64
 import json
+import logging
 import os
+from contextlib import asynccontextmanager
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Depends, Request
@@ -20,7 +22,19 @@ from app.models.prank_session import PrankSessionState
 
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI()
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    if "MAX_CALL_DURATION_SECONDS" not in os.environ:
+        raise RuntimeError(
+            "Required environment variable MAX_CALL_DURATION_SECONDS is not set"
+        )
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 # ---------- schemas ----------
@@ -78,26 +92,42 @@ _TELNYX_EVENT_MAP = {
 @app.post("/webhooks/telnyx", status_code=200)
 async def telnyx_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     body = await request.json()
-    data = body["data"]
-    event_type = data.get("event_type")
 
+    try:
+        data = body["data"]
+    except (KeyError, TypeError):
+        logger.warning("Telnyx webhook missing 'data' field")
+        return {"status": "ignored"}
+
+    event_type = data.get("event_type")
     prank_event = _TELNYX_EVENT_MAP.get(event_type)
     if prank_event is None:
         return {"status": "ignored"}
 
-    payload = data["payload"]
-    call_control_id = payload["call_control_id"]
-    client_state = json.loads(base64.b64decode(payload["client_state"]))
-    leg = client_state["leg"]
-    session_id = UUID(client_state["session_id"])
+    try:
+        payload = data["payload"]
+        call_control_id = payload["call_control_id"]
+        client_state = json.loads(base64.b64decode(payload["client_state"]))
+        leg = client_state["leg"]
+        session_id = UUID(client_state["session_id"])
+    except Exception:
+        logger.exception("Telnyx webhook: failed to parse payload for event_type=%s", event_type)
+        return {"status": "ignored"}
 
-    orchestrator = PrankOrchestrator(db)
-    await orchestrator.handle_event(
-        session_id=session_id,
-        event_type=prank_event,
-        leg=leg,
-        call_control_id=call_control_id,
-    )
+    try:
+        orchestrator = PrankOrchestrator(db)
+        await orchestrator.handle_event(
+            session_id=session_id,
+            event_type=prank_event,
+            leg=leg,
+            call_control_id=call_control_id,
+        )
+    except ValueError:
+        logger.exception(
+            "Telnyx webhook: orchestrator rejected event event_type=%s session_id=%s leg=%s",
+            event_type, session_id, leg,
+        )
+        return {"status": "ignored"}
 
     return {"status": "ok"}
 
@@ -120,6 +150,7 @@ async def dev_start_prank(
         sender_number=body.sender_phone,
         recipient_number=body.recipient_phone,
     )
+    logger.info("Session %s created for sender=%s recipient=%s", session.id, body.sender_phone, body.recipient_phone)
     await service.transition_state(session, PrankSessionState.CALLING_SENDER)
 
     telnyx = TelnyxCallService()
@@ -131,4 +162,3 @@ async def dev_start_prank(
     )
 
     return {"session_id": session.id}
-

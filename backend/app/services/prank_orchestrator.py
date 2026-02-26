@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from enum import Enum
 from typing import Optional
@@ -11,6 +12,8 @@ from app.models.prank_session import PrankSessionState
 from app.services.prank_session_service import PrankSessionService
 from app.services.telnyx_call_service import TelnyxCallService
 
+logger = logging.getLogger(__name__)
+
 _active_tasks: set[asyncio.Task] = set()
 
 
@@ -20,16 +23,18 @@ async def _call_timeout_worker(
     recipient_call_control_id: str,
 ) -> None:
     try:
-        duration = int(os.environ.get("MAX_CALL_DURATION_SECONDS", "115"))
-        print("KONDIO")
+        duration = int(os.environ.get("MAX_CALL_DURATION_SECONDS"))
+        logger.info("Timeout worker started for session %s, sleeping %s seconds", session_id, duration)
         await asyncio.sleep(duration)
 
+        logger.info("Timeout triggered for session %s, hanging up both legs", session_id)
         telnyx = TelnyxCallService()
         for ccid in (sender_call_control_id, recipient_call_control_id):
             try:
                 await telnyx.hangup_call(ccid)
-            except Exception as e:
-                print(f"[timeout] hangup failed for {ccid}: {e}")
+                logger.info("Timeout: hangup issued for call_control_id=%s", ccid)
+            except Exception:
+                logger.warning("Timeout: hangup failed for call_control_id=%s (leg may already be down)", ccid)
 
         async with SessionLocal() as db:
             service = PrankSessionService(db)
@@ -37,10 +42,16 @@ async def _call_timeout_worker(
                 session = await service.get_session(session_id)
                 if session.state == PrankSessionState.PLAYING_AUDIO:
                     await service.transition_state(session, PrankSessionState.COMPLETED)
-            except Exception as e:
-                print(f"[timeout] state transition failed: {e}")
-    except Exception as e:
-        print(f"[timeout] worker crashed: {e}")
+                    logger.info("Timeout: session %s transitioned to COMPLETED", session_id)
+                else:
+                    logger.info(
+                        "Timeout: session %s already in state %s, skipping transition",
+                        session_id, session.state.value,
+                    )
+            except Exception:
+                logger.exception("Timeout: state transition failed for session %s", session_id)
+    except Exception:
+        logger.exception("Timeout worker crashed for session %s", session_id)
 
 
 class PrankEventType(str, Enum):
@@ -69,6 +80,7 @@ class PrankOrchestrator:
 
         if state == PrankSessionState.CALLING_SENDER:
             if event_type == PrankEventType.LEG_ANSWERED and leg == "sender":
+                logger.info("Session %s: sender leg answered", session_id)
                 await self.service.set_call_control_id(session, "sender", call_control_id)
                 await self.service.transition_state(session, PrankSessionState.CALLING_RECIPIENT)
                 await self.telnyx.create_outbound_call(
@@ -86,12 +98,15 @@ class PrankOrchestrator:
 
         elif state == PrankSessionState.CALLING_RECIPIENT:
             if event_type == PrankEventType.LEG_ANSWERED and leg == "recipient":
+                logger.info("Session %s: recipient leg answered", session_id)
                 await self.service.set_call_control_id(session, "recipient", call_control_id)
                 sender_call_control_id = session.sender_call_control_id
                 await self.service.transition_state(session, PrankSessionState.BRIDGED)
                 try:
                     await self.telnyx.bridge_calls(sender_call_control_id, call_control_id)
+                    logger.info("Session %s: bridge established", session_id)
                 except Exception:
+                    logger.exception("Session %s: bridge failed, transitioning to FAILED", session_id)
                     await self.service.transition_state(session, PrankSessionState.FAILED)
                     return
                 await self.service.transition_state(session, PrankSessionState.PLAYING_AUDIO)
@@ -120,13 +135,17 @@ class PrankOrchestrator:
         elif state == PrankSessionState.PLAYING_AUDIO:
             if event_type in (PrankEventType.LEG_HANGUP, PrankEventType.LEG_FAILED):
                 await self.service.transition_state(session, PrankSessionState.COMPLETED)
+                logger.info("Session %s: completed (event=%s leg=%s)", session_id, event_type, leg)
             else:
                 raise ValueError(
                     f"Unexpected event {event_type} + leg={leg!r} in state {state.value}"
                 )
 
         elif state in (PrankSessionState.FAILED, PrankSessionState.COMPLETED):
-            print("call finished")
+            logger.info(
+                "Session %s already in terminal state %s, ignoring event %s (leg=%s)",
+                session_id, state.value, event_type, leg,
+            )
 
         else:
             raise ValueError(
