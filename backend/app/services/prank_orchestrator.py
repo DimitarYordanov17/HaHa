@@ -20,7 +20,7 @@ async def _call_timeout_worker(
     recipient_call_control_id: str,
 ) -> None:
     try:
-        duration = int(os.environ.get("MAX_CALL_DURATION_SECONDS", "10"))
+        duration = int(os.environ.get("MAX_CALL_DURATION_SECONDS", "115"))
         print("KONDIO")
         await asyncio.sleep(duration)
 
