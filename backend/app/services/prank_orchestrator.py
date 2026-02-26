@@ -1,12 +1,46 @@
+import asyncio
+import os
 from enum import Enum
 from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import SessionLocal
 from app.models.prank_session import PrankSessionState
 from app.services.prank_session_service import PrankSessionService
 from app.services.telnyx_call_service import TelnyxCallService
+
+_active_tasks: set[asyncio.Task] = set()
+
+
+async def _call_timeout_worker(
+    session_id: UUID,
+    sender_call_control_id: str,
+    recipient_call_control_id: str,
+) -> None:
+    try:
+        duration = int(os.environ.get("MAX_CALL_DURATION_SECONDS", "10"))
+        print("KONDIO")
+        await asyncio.sleep(duration)
+
+        telnyx = TelnyxCallService()
+        for ccid in (sender_call_control_id, recipient_call_control_id):
+            try:
+                await telnyx.hangup_call(ccid)
+            except Exception as e:
+                print(f"[timeout] hangup failed for {ccid}: {e}")
+
+        async with SessionLocal() as db:
+            service = PrankSessionService(db)
+            try:
+                session = await service.get_session(session_id)
+                if session.state == PrankSessionState.PLAYING_AUDIO:
+                    await service.transition_state(session, PrankSessionState.COMPLETED)
+            except Exception as e:
+                print(f"[timeout] state transition failed: {e}")
+    except Exception as e:
+        print(f"[timeout] worker crashed: {e}")
 
 
 class PrankEventType(str, Enum):
@@ -62,6 +96,13 @@ class PrankOrchestrator:
                     return
                 await self.service.transition_state(session, PrankSessionState.PLAYING_AUDIO)
                 await self.telnyx.start_playback(sender_call_control_id)
+                task = asyncio.create_task(_call_timeout_worker(
+                    session_id=session.id,
+                    sender_call_control_id=sender_call_control_id,
+                    recipient_call_control_id=call_control_id,
+                ))
+                _active_tasks.add(task)
+                task.add_done_callback(_active_tasks.discard)
             elif event_type == PrankEventType.LEG_FAILED and leg == "recipient":
                 await self.service.transition_state(session, PrankSessionState.FAILED)
             elif event_type == PrankEventType.LEG_HANGUP and leg == "sender":

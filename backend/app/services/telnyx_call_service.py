@@ -50,6 +50,14 @@ class TelnyxCallService:
             )
             response.raise_for_status()
 
+    async def hangup_call(self, call_control_id: str) -> None:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self._BASE}/calls/{call_control_id}/actions/hangup",
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+
     async def start_playback(self, call_control_id: str) -> None:
         async with httpx.AsyncClient() as client:
             response = await client.post(
