@@ -77,7 +77,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
 
 @app.get("/me")
 async def me(current_user: User = Depends(get_current_user)):
-    return {"id": current_user.id, "email": current_user.email}
+    return {"id": current_user.id, "email": current_user.email, "credits": current_user.credits}
 
 
 # ---------- telnyx webhooks ----------
@@ -145,10 +145,14 @@ async def dev_start_prank(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.credits < 1:
+        raise HTTPException(status_code=400, detail="Insufficient credits")
+
     service = PrankSessionService(db)
     session = await service.create_session(
         sender_number=body.sender_phone,
         recipient_number=body.recipient_phone,
+        user_id=current_user.id,
     )
     logger.info("Session %s created for sender=%s recipient=%s", session.id, body.sender_phone, body.recipient_phone)
     await service.transition_state(session, PrankSessionState.CALLING_SENDER)

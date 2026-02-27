@@ -101,7 +101,10 @@ class PrankOrchestrator:
                 logger.info("Session %s: recipient leg answered", session_id)
                 await self.service.set_call_control_id(session, "recipient", call_control_id)
                 sender_call_control_id = session.sender_call_control_id
-                await self.service.transition_state(session, PrankSessionState.BRIDGED)
+                bridged = await self.service.charge_and_transition_to_bridged(session)
+                if not bridged:
+                    logger.info("Session %s: insufficient credits, transitioned to FAILED", session_id)
+                    return
                 try:
                     await self.telnyx.bridge_calls(sender_call_control_id, call_control_id)
                     logger.info("Session %s: bridge established", session_id)

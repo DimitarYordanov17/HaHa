@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Enum as SAEnum, Index, String, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -41,6 +41,12 @@ class PrankSession(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     sender_number: Mapped[str] = mapped_column(String, nullable=False)
     recipient_number: Mapped[str] = mapped_column(String, nullable=False)
     sender_call_control_id: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -66,5 +72,10 @@ class PrankSession(Base):
         # PostgreSQL.  Raw SQL that bypasses the ORM will not refresh this column
         # — acceptable for V1.  A trigger can be added later if needed.
         onupdate=func.now(),
+        nullable=False,
+    )
+    charged: Mapped[bool] = mapped_column(
+        Boolean,
+        server_default=text("false"),
         nullable=False,
     )

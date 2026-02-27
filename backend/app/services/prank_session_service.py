@@ -1,9 +1,11 @@
+import uuid
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.prank_session import PrankSession, PrankSessionState
+from app.models.user import User
 
 # Valid forward transitions. FAILED is handled separately (allowed from any
 # non-COMPLETED state) so it does not appear as a value here.
@@ -21,12 +23,13 @@ class PrankSessionService:
         self.session = session
 
     async def create_session(
-        self, sender_number: str, recipient_number: str
+        self, sender_number: str, recipient_number: str, user_id: uuid.UUID
     ) -> PrankSession:
         prank_session = PrankSession(
             sender_number=sender_number,
             recipient_number=recipient_number,
             state=PrankSessionState.CREATED,
+            user_id=user_id,
         )
         self.session.add(prank_session)
         await self.session.commit()
@@ -73,6 +76,32 @@ class PrankSessionService:
         session.state = new_state
         await self.session.commit()
         await self.session.refresh(session)
+
+    async def charge_and_transition_to_bridged(self, session: PrankSession) -> bool:
+        """Atomically charge 1 credit and transition to BRIDGED.
+
+        Idempotent: if session.charged is already True, skips deduction and
+        still transitions to BRIDGED (handles duplicate webhook delivery).
+
+        Returns True on success, False if the user had insufficient credits
+        (session is set to FAILED and committed before returning).
+        """
+        if session.state == PrankSessionState.BRIDGED:
+            return session
+
+        if not session.charged:
+            user = await self.session.get(User, session.user_id)
+            if user.credits < 1:
+                session.state = PrankSessionState.FAILED
+                await self.session.commit()
+                return False
+            user.credits -= 1
+            session.charged = True
+
+        session.state = PrankSessionState.BRIDGED
+        await self.session.commit()
+        await self.session.refresh(session)
+        return True
 
     async def set_call_control_id(
         self, session: PrankSession, leg: str, call_control_id: str

@@ -1,4 +1,4 @@
-"""Add prank_sessions table
+"""Initial schema: users and prank_sessions tables
 
 Revision ID: a1b2c3d4e5f6
 Revises:
@@ -30,6 +30,25 @@ _ENUM_NAME = "pranksessionstate"
 
 
 def upgrade() -> None:
+    op.create_table(
+        "users",
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            nullable=False,
+        ),
+        sa.Column("email", sa.String(255), nullable=False),
+        sa.Column("hashed_password", sa.String(255), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+    )
+    op.create_index("ix_users_email", "users", ["email"], unique=True)
+
     # Create the PostgreSQL enum type before the table that references it.
     op.execute(
         sa.text(
@@ -89,3 +108,5 @@ def downgrade() -> None:
     op.drop_index("ix_prank_sessions_state", table_name="prank_sessions")
     op.drop_table("prank_sessions")
     op.execute(sa.text(f"DROP TYPE {_ENUM_NAME}"))
+    op.drop_index("ix_users_email", table_name="users")
+    op.drop_table("users")
