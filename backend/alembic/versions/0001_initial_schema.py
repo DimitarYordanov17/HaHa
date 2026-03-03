@@ -1,8 +1,8 @@
-"""Initial schema: users and prank_sessions tables
+"""Initial schema: users and prank_sessions
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: 0001
 Revises:
-Create Date: 2026-02-24 00:00:00.000000
+Create Date: 2026-03-03 00:00:00.000000
 
 """
 from typing import Sequence, Union
@@ -11,8 +11,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from alembic import op
 
-# revision identifiers, used by Alembic.
-revision: str = "a1b2c3d4e5f6"
+revision: str = "0001"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -32,24 +31,25 @@ _ENUM_NAME = "pranksessionstate"
 def upgrade() -> None:
     op.create_table(
         "users",
-        sa.Column(
-            "id",
-            postgresql.UUID(as_uuid=True),
-            primary_key=True,
-            nullable=False,
-        ),
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("hashed_password", sa.String(255), nullable=False),
+        sa.Column("phone_number", sa.String(50), nullable=False),
+        sa.Column(
+            "credits",
+            sa.Integer(),
+            nullable=False,
+            server_default=sa.text("0"),
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
             nullable=False,
+            server_default=sa.text("now()"),
         ),
     )
     op.create_index("ix_users_email", "users", ["email"], unique=True)
 
-    # Create the PostgreSQL enum type before the table that references it.
     op.execute(
         sa.text(
             f"CREATE TYPE {_ENUM_NAME} AS ENUM "
@@ -59,10 +59,11 @@ def upgrade() -> None:
 
     op.create_table(
         "prank_sessions",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
         sa.Column(
-            "id",
+            "user_id",
             postgresql.UUID(as_uuid=True),
-            primary_key=True,
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column("sender_number", sa.String(), nullable=False),
@@ -71,26 +72,28 @@ def upgrade() -> None:
         sa.Column("recipient_call_control_id", sa.String(), nullable=True),
         sa.Column(
             "state",
-            # create_type=False: the type already exists; do not re-create it.
             postgresql.ENUM(*_ENUM_VALUES, name=_ENUM_NAME, create_type=False),
             nullable=False,
-            # text() produces DEFAULT 'CREATED'; a bare string would produce
-            # DEFAULT CREATED (unquoted identifier), which Postgres rejects.
             server_default=sa.text("'CREATED'"),
         ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
             nullable=False,
+            server_default=sa.text("now()"),
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
             nullable=False,
+            server_default=sa.text("now()"),
         ),
-        # Guard: BRIDGED / PLAYING_AUDIO / COMPLETED require both call legs.
+        sa.Column(
+            "charged",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
+        ),
         sa.CheckConstraint(
             "state NOT IN ('BRIDGED', 'PLAYING_AUDIO', 'COMPLETED')"
             " OR (sender_call_control_id IS NOT NULL"
@@ -98,7 +101,7 @@ def upgrade() -> None:
             name="ck_prank_sessions_bridged_requires_call_ids",
         ),
     )
-
+    op.create_index("ix_prank_sessions_user_id", "prank_sessions", ["user_id"])
     op.create_index("ix_prank_sessions_state", "prank_sessions", ["state"])
     op.create_index("ix_prank_sessions_created_at", "prank_sessions", ["created_at"])
 
@@ -106,6 +109,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_prank_sessions_created_at", table_name="prank_sessions")
     op.drop_index("ix_prank_sessions_state", table_name="prank_sessions")
+    op.drop_index("ix_prank_sessions_user_id", table_name="prank_sessions")
     op.drop_table("prank_sessions")
     op.execute(sa.text(f"DROP TYPE {_ENUM_NAME}"))
     op.drop_index("ix_users_email", table_name="users")
