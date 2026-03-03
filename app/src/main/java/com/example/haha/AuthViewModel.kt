@@ -18,16 +18,19 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<AuthState> = _state
 
     init {
-        checkAuth()
+        // Boot-time check: clear token on 401 or network failure (device offline at startup)
+        checkAuth(clearTokenOnNetworkError = true)
     }
 
+    // Called post-login. Token was just saved — only a 401 means it's invalid.
+    // Network errors should not erase a token that the server just issued.
     fun refreshAuth() {
         _state.value = AuthState.Loading
-        checkAuth()
+        checkAuth(clearTokenOnNetworkError = false)
     }
 
     // Re-fetches /me and updates the user in the current Authenticated state.
-    // Does NOT log out on failure — treats errors as transient.
+    // Does NOT log out on any failure — treats all errors as transient.
     fun refreshUser() {
         if (_state.value !is AuthState.Authenticated) return
         viewModelScope.launch {
@@ -42,7 +45,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun checkAuth() {
+    private fun checkAuth(clearTokenOnNetworkError: Boolean) {
         val token = prefs.getString("access_token", null)
         if (token == null) {
             _state.value = AuthState.Unauthenticated
@@ -52,14 +55,24 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val response = RetrofitClient.api.getMe()
-                if (response.isSuccessful) {
-                    _state.value = AuthState.Authenticated(response.body()!!.toUser())
-                } else {
-                    prefs.edit().remove("access_token").apply()
-                    _state.value = AuthState.Unauthenticated
+                when {
+                    response.isSuccessful -> {
+                        _state.value = AuthState.Authenticated(response.body()!!.toUser())
+                    }
+                    response.code() == 401 -> {
+                        prefs.edit().remove("access_token").apply()
+                        _state.value = AuthState.Unauthenticated
+                    }
+                    else -> {
+                        // Non-401 HTTP error (5xx, etc.) — server problem, not an invalid token
+                        _state.value = AuthState.Unauthenticated
+                    }
                 }
             } catch (e: Exception) {
-                prefs.edit().remove("access_token").apply()
+                // Network exception — token validity unknown
+                if (clearTokenOnNetworkError) {
+                    prefs.edit().remove("access_token").apply()
+                }
                 _state.value = AuthState.Unauthenticated
             }
         }

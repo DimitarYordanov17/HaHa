@@ -5,8 +5,11 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.haha.network.RetrofitClient
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
@@ -18,6 +21,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow<LoginUiState>(LoginUiState.Idle)
     val uiState: StateFlow<LoginUiState> = _uiState
+
+    private val _events = MutableSharedFlow<LoginEvent>(extraBufferCapacity = 1)
+    val events: SharedFlow<LoginEvent> = _events.asSharedFlow()
 
     fun login() {
         viewModelScope.launch {
@@ -32,6 +38,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     prefs.edit().putString("access_token", token).apply()
                     _uiState.value = LoginUiState.Idle
+                    _events.emit(LoginEvent.Success)
                 } else if (response.code() == 401) {
                     _uiState.value = LoginUiState.Error("Invalid credentials")
                 } else {

@@ -14,6 +14,7 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,8 +26,20 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
-fun DashboardScreen(user: User, viewModel: SessionViewModel = viewModel()) {
+fun DashboardScreen(
+    user: User,
+    onBridged: () -> Unit,
+    viewModel: SessionViewModel = viewModel()
+) {
     val sessionState by viewModel.state.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                SessionEvent.Bridged -> onBridged()
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         UserHeader(user = user)

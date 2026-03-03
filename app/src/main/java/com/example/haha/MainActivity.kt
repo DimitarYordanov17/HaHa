@@ -32,7 +32,10 @@ class MainActivity : ComponentActivity() {
                     AuthState.Unauthenticated -> LoginScreen(
                         onLoginSuccess = { authViewModel.refreshAuth() }
                     )
-                    is AuthState.Authenticated -> DashboardScreen(user = state.user)
+                    is AuthState.Authenticated -> DashboardScreen(
+                        user = state.user,
+                        onBridged = { authViewModel.refreshUser() }
+                    )
                 }
             }
         }

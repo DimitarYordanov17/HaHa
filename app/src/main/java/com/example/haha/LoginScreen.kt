@@ -16,9 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -34,13 +31,12 @@ fun LoginScreen(
     val password by viewModel.password.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
 
-    // Detect Loading → Idle transition as the success signal
-    var wasLoading by remember { mutableStateOf(false) }
-    LaunchedEffect(uiState) {
-        if (wasLoading && uiState is LoginUiState.Idle) {
-            onLoginSuccess()
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                LoginEvent.Success -> onLoginSuccess()
+            }
         }
-        wasLoading = uiState is LoginUiState.Loading
     }
 
     Column(
