@@ -6,7 +6,8 @@ import com.google.gson.annotations.SerializedName
 
 data class RegisterRequest(
     val email: String,
-    val password: String
+    val password: String,
+    @SerializedName("phone_number") val phoneNumber: String
 )
 
 data class CreateSessionRequest(
@@ -23,6 +24,7 @@ data class TokenResponse(
 )
 
 data class MeResponse(
-    val id: String,
-    val email: String
+    val email: String,
+    @SerializedName("phone_number") val phoneNumber: String,
+    val credits: Int
 )

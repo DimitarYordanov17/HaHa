@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,28 +25,42 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
-fun DashboardScreen(viewModel: SessionViewModel = viewModel()) {
+fun DashboardScreen(user: User, viewModel: SessionViewModel = viewModel()) {
     val sessionState by viewModel.state.collectAsState()
 
-    when (val uiState = sessionState) {
-        SessionUiState.Idle -> SessionInputForm(
-            onStart = { recipient -> viewModel.startSession(recipient) }
-        )
-        SessionUiState.Creating -> Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
+    Column(modifier = Modifier.fillMaxSize()) {
+        UserHeader(user = user)
+        Divider()
+        Box(modifier = Modifier.weight(1f)) {
+            when (val uiState = sessionState) {
+                SessionUiState.Idle -> SessionInputForm(
+                    onStart = { recipient -> viewModel.startSession(recipient) }
+                )
+                SessionUiState.Creating -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+                is SessionUiState.Active -> ActiveSessionScreen(session = uiState.session)
+                SessionUiState.Completed -> SessionResultScreen(
+                    message = "Session Completed",
+                    onReset = { viewModel.reset() }
+                )
+                is SessionUiState.Failed -> SessionResultScreen(
+                    message = uiState.message,
+                    onReset = { viewModel.reset() }
+                )
+            }
         }
-        is SessionUiState.Active -> ActiveSessionScreen(session = uiState.session)
-        SessionUiState.Completed -> SessionResultScreen(
-            message = "Session Completed",
-            onReset = { viewModel.reset() }
-        )
-        is SessionUiState.Failed -> SessionResultScreen(
-            message = uiState.message,
-            onReset = { viewModel.reset() }
-        )
+    }
+}
+
+@Composable
+private fun UserHeader(user: User) {
+    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
+        Text("Calling from: ${user.phoneNumber}")
+        Text("Credits: ${user.credits}")
     }
 }
 

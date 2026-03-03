@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 val authState by authViewModel.state.collectAsState()
-                when (authState) {
+                when (val state = authState) {
                     AuthState.Loading -> Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -32,10 +32,9 @@ class MainActivity : ComponentActivity() {
                     AuthState.Unauthenticated -> LoginScreen(
                         onLoginSuccess = { authViewModel.refreshAuth() }
                     )
-                    AuthState.Authenticated -> DashboardScreen()
+                    is AuthState.Authenticated -> DashboardScreen(user = state.user)
                 }
             }
         }
     }
 }
-
