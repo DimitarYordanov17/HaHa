@@ -34,7 +34,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                val response = RetrofitClient.api.getMe("Bearer $token")
+                val response = RetrofitClient.api.getMe()
                 if (response.isSuccessful) {
                     _state.value = AuthState.Authenticated
                 } else {

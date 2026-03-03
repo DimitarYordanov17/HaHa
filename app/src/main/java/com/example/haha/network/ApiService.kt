@@ -6,7 +6,6 @@ import retrofit2.http.Body
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
-import retrofit2.http.Header
 import retrofit2.http.POST
 
 interface ApiService {
@@ -33,9 +32,9 @@ interface ApiService {
 
     // Callback-based — kept, not actively used
     @GET("me")
-    fun me(@Header("Authorization") bearer: String): Call<MeResponse>
+    fun me(): Call<MeResponse>
 
     // Suspend — used by AuthViewModel
     @GET("me")
-    suspend fun getMe(@Header("Authorization") bearer: String): Response<MeResponse>
+    suspend fun getMe(): Response<MeResponse>
 }
