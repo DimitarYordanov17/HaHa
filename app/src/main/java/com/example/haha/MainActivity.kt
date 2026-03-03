@@ -31,18 +31,13 @@ class MainActivity : ComponentActivity() {
                     ) {
                         CircularProgressIndicator()
                     }
-                    AuthState.Unauthenticated -> LoginScreen()
+                    AuthState.Unauthenticated -> LoginScreen(
+                        onLoginSuccess = { authViewModel.refreshAuth() }
+                    )
                     AuthState.Authenticated -> DashboardScreen()
                 }
             }
         }
-    }
-}
-
-@Composable
-fun LoginScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Login Screen")
     }
 }
 

@@ -20,6 +20,11 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         checkAuth()
     }
 
+    fun refreshAuth() {
+        _state.value = AuthState.Loading
+        checkAuth()
+    }
+
     private fun checkAuth() {
         val token = prefs.getString("access_token", null)
         if (token == null) {

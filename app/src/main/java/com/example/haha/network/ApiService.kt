@@ -15,7 +15,7 @@ interface ApiService {
     @POST("register")
     fun register(@Body body: RegisterRequest): Call<TokenResponse>
 
-    // Form-encoded: username=<email>&password=<password>  (OAuth2PasswordRequestForm)
+    // Callback-based — kept, not actively used
     @FormUrlEncoded
     @POST("login")
     fun login(
@@ -23,7 +23,15 @@ interface ApiService {
         @Field("password") password: String
     ): Call<TokenResponse>
 
-    // Callback-based — used by LoginActivity
+    // Suspend — used by LoginViewModel
+    @FormUrlEncoded
+    @POST("login")
+    suspend fun loginSuspend(
+        @Field("username") email: String,
+        @Field("password") password: String
+    ): Response<TokenResponse>
+
+    // Callback-based — kept, not actively used
     @GET("me")
     fun me(@Header("Authorization") bearer: String): Call<MeResponse>
 
