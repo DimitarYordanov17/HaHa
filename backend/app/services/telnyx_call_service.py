@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -18,6 +19,15 @@ class TelnyxCallService:
             "Content-Type": "application/json",
         }
 
+    async def _retry(self, func, *, retries: int = 3):
+        for attempt in range(retries):
+            try:
+                return await func()
+            except Exception:
+                if attempt == retries - 1:
+                    raise
+                await asyncio.sleep(0.5 * (attempt + 1))
+
     async def create_outbound_call(
         self,
         to_number: str,
@@ -29,43 +39,53 @@ class TelnyxCallService:
             json.dumps({"session_id": str(session_id), "leg": leg}).encode()
         ).decode()
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self._BASE}/calls",
-                headers=self._headers(),
-                json={
-                    "to": to_number,
-                    "from": from_number,
-                    "connection_id": os.environ["TELNYX_CONNECTION_ID"],
-                    "client_state": client_state,
-                },
-            )
-            response.raise_for_status()
+        async def _do() -> None:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self._BASE}/calls",
+                    headers=self._headers(),
+                    json={
+                        "to": to_number,
+                        "from": from_number,
+                        "connection_id": os.environ["TELNYX_CONNECTION_ID"],
+                        "client_state": client_state,
+                    },
+                )
+                response.raise_for_status()
+
+        await self._retry(_do)
 
     async def bridge_calls(
         self, call_control_id: str, target_call_control_id: str
     ) -> None:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self._BASE}/calls/{call_control_id}/actions/bridge",
-                headers=self._headers(),
-                json={"call_control_id": target_call_control_id},
-            )
-            response.raise_for_status()
-            logger.info(
-                "BRIDGE_STARTED initiator_ccid=%s target_ccid=%s status=%s",
-                call_control_id,
-                target_call_control_id,
-                response.status_code,
-            )
+        async def _do():
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self._BASE}/calls/{call_control_id}/actions/bridge",
+                    headers=self._headers(),
+                    json={"call_control_id": target_call_control_id},
+                )
+                response.raise_for_status()
+                return response
+
+        response = await self._retry(_do)
+        logger.info(
+            "BRIDGE_STARTED initiator_ccid=%s target_ccid=%s status=%s",
+            call_control_id,
+            target_call_control_id,
+            response.status_code,
+        )
 
     async def hangup_call(self, call_control_id: str) -> None:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self._BASE}/calls/{call_control_id}/actions/hangup",
-                headers=self._headers(),
-            )
-            response.raise_for_status()
+        async def _do() -> None:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self._BASE}/calls/{call_control_id}/actions/hangup",
+                    headers=self._headers(),
+                )
+                response.raise_for_status()
+
+        await self._retry(_do)
 
     async def start_playback(
         self,
@@ -74,20 +94,24 @@ class TelnyxCallService:
         leg: str,
         session_id: UUID,
     ) -> None:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self._BASE}/calls/{call_control_id}/actions/playback_start",
-                headers=self._headers(),
-                json={
-                    "audio_url": "https://uncabled-zina-fusilly.ngrok-free.dev/static/test.mp3",
-                    "overlay": True,
-                },
-            )
-            response.raise_for_status()
-            logger.info(
-                "PLAYBACK_STARTED session=%s leg=%s ccid=%s status=%s",
-                session_id,
-                leg,
-                call_control_id,
-                response.status_code,
-            )
+        async def _do():
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self._BASE}/calls/{call_control_id}/actions/playback_start",
+                    headers=self._headers(),
+                    json={
+                        "audio_url": "https://uncabled-zina-fusilly.ngrok-free.dev/static/test.mp3",
+                        "overlay": True,
+                    },
+                )
+                response.raise_for_status()
+                return response
+
+        response = await self._retry(_do)
+        logger.info(
+            "PLAYBACK_STARTED session=%s leg=%s ccid=%s status=%s",
+            session_id,
+            leg,
+            call_control_id,
+            response.status_code,
+        )

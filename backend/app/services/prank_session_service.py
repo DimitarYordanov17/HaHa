@@ -1,3 +1,4 @@
+import logging
 import uuid
 from uuid import UUID
 
@@ -6,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.prank_session import PrankSession, PrankSessionState
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 # Valid forward transitions. FAILED is handled separately (allowed from any
 # non-COMPLETED state) so it does not appear as a value here.
@@ -48,6 +51,14 @@ class PrankSessionService:
     async def transition_state(
         self, session: PrankSession, new_state: PrankSessionState
     ) -> None:
+        if session.state == new_state:
+            logger.debug(
+                "Skipping duplicate transition: session=%s state=%s",
+                session.id,
+                new_state.value,
+            )
+            return
+
         current = session.state
 
         if new_state == PrankSessionState.FAILED:
@@ -86,6 +97,10 @@ class PrankSessionService:
         Returns True on success, False if the user had insufficient credits
         (session is set to FAILED and committed before returning).
         """
+        if session.charged:
+            logger.debug("Session %s already charged", session.id)
+            return True
+
         if session.state == PrankSessionState.BRIDGED:
             return session
 

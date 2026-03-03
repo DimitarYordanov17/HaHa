@@ -15,6 +15,7 @@ from app.services.telnyx_call_service import TelnyxCallService
 logger = logging.getLogger(__name__)
 
 _active_tasks: set[asyncio.Task] = set()
+_session_locks: dict[UUID, asyncio.Lock] = {}
 
 
 async def _call_timeout_worker(
@@ -76,6 +77,17 @@ class PrankOrchestrator:
         event_type: PrankEventType,
         leg: str,
         call_control_id: Optional[str] = None,
+    ) -> None:
+        lock = _session_locks.setdefault(session_id, asyncio.Lock())
+        async with lock:
+            await self._handle_event_locked(session_id, event_type, leg, call_control_id)
+
+    async def _handle_event_locked(
+        self,
+        session_id: UUID,
+        event_type: PrankEventType,
+        leg: str,
+        call_control_id: Optional[str],
     ) -> None:
         if leg not in ("sender", "recipient"):
             raise ValueError(f"Invalid leg: {leg!r}. Must be 'sender' or 'recipient'")
@@ -174,10 +186,13 @@ class PrankOrchestrator:
                 )
 
         elif state in (PrankSessionState.FAILED, PrankSessionState.COMPLETED):
-            logger.info(
-                "Session %s already in terminal state %s, ignoring event %s (leg=%s)",
-                session_id, state.value, event_type, leg,
+            logger.debug(
+                "Ignoring event %s for terminal session %s (state=%s)",
+                event_type.value,
+                session.id,
+                state.value,
             )
+            return
 
         else:
             raise ValueError(
