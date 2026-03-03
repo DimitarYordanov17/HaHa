@@ -9,6 +9,10 @@ data class RegisterRequest(
     val password: String
 )
 
+data class CreateSessionRequest(
+    val recipient: String
+)
+
 // LoginRequest is not needed — login uses @FormUrlEncoded fields directly in ApiService.
 
 // ---------- Responses ----------

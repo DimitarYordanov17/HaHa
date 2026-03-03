@@ -7,6 +7,7 @@ import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 interface ApiService {
 
@@ -37,4 +38,10 @@ interface ApiService {
     // Suspend — used by AuthViewModel
     @GET("me")
     suspend fun getMe(): Response<MeResponse>
+
+    @POST("pranks")
+    suspend fun createSession(@Body body: CreateSessionRequest): Response<SessionDto>
+
+    @GET("pranks/{id}")
+    suspend fun getSession(@Path("id") id: String): Response<SessionDto>
 }
