@@ -66,6 +66,12 @@ class SessionViewModel : ViewModel() {
         }
     }
 
+    fun reset() {
+        pollingJob?.cancel()
+        pollingJob = null
+        _state.value = SessionUiState.Idle
+    }
+
     override fun onCleared() {
         super.onCleared()
         pollingJob?.cancel()
