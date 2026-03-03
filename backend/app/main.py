@@ -84,6 +84,7 @@ async def me(current_user: User = Depends(get_current_user)):
 
 _TELNYX_EVENT_MAP = {
     "call.answered": PrankEventType.LEG_ANSWERED,
+    "call.bridged": PrankEventType.LEG_BRIDGED,
     "call.hangup": PrankEventType.LEG_HANGUP,
     "call.failed": PrankEventType.LEG_FAILED,
 }

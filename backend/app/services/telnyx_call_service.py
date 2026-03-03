@@ -1,9 +1,12 @@
 import base64
 import json
+import logging
 import os
 from uuid import UUID
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class TelnyxCallService:
@@ -49,6 +52,12 @@ class TelnyxCallService:
                 json={"call_control_id": target_call_control_id},
             )
             response.raise_for_status()
+            logger.info(
+                "BRIDGE_STARTED initiator_ccid=%s target_ccid=%s status=%s",
+                call_control_id,
+                target_call_control_id,
+                response.status_code,
+            )
 
     async def hangup_call(self, call_control_id: str) -> None:
         async with httpx.AsyncClient() as client:
@@ -58,13 +67,27 @@ class TelnyxCallService:
             )
             response.raise_for_status()
 
-    async def start_playback(self, call_control_id: str) -> None:
+    async def start_playback(
+        self,
+        call_control_id: str,
+        *,
+        leg: str,
+        session_id: UUID,
+    ) -> None:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self._BASE}/calls/{call_control_id}/actions/playback_start",
                 headers=self._headers(),
                 json={
-                    "audio_url": "https://uncabled-zina-fusilly.ngrok-free.dev/static/test.mp3"
+                    "audio_url": "https://uncabled-zina-fusilly.ngrok-free.dev/static/test.mp3",
+                    "overlay": True,
                 },
             )
             response.raise_for_status()
+            logger.info(
+                "PLAYBACK_STARTED session=%s leg=%s ccid=%s status=%s",
+                session_id,
+                leg,
+                call_control_id,
+                response.status_code,
+            )

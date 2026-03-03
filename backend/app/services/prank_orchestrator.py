@@ -23,8 +23,12 @@ async def _call_timeout_worker(
     recipient_call_control_id: str,
 ) -> None:
     try:
-        duration = int(os.environ.get("MAX_CALL_DURATION_SECONDS"))
-        logger.info("Timeout worker started for session %s, sleeping %s seconds", session_id, duration)
+        duration = int(os.environ.get("MAX_CALL_DURATION_SECONDS", "300"))
+        logger.info(
+            "TIMEOUT_WORKER_STARTED session=%s duration=%s",
+            session_id,
+            duration,
+        )
         await asyncio.sleep(duration)
 
         logger.info("Timeout triggered for session %s, hanging up both legs", session_id)
@@ -56,6 +60,7 @@ async def _call_timeout_worker(
 
 class PrankEventType(str, Enum):
     LEG_ANSWERED = "LEG_ANSWERED"
+    LEG_BRIDGED = "LEG_BRIDGED"
     LEG_FAILED = "LEG_FAILED"
     LEG_HANGUP = "LEG_HANGUP"
 
@@ -106,21 +111,12 @@ class PrankOrchestrator:
                     logger.info("Session %s: insufficient credits, transitioned to FAILED", session_id)
                     return
                 try:
-                    await self.telnyx.bridge_calls(sender_call_control_id, call_control_id)
-                    logger.info("Session %s: bridge established", session_id)
+                    await self.telnyx.bridge_calls(call_control_id, sender_call_control_id)
+                    logger.info("Session %s: bridge requested, waiting for call.bridged confirmation", session_id)
                 except Exception:
                     logger.exception("Session %s: bridge failed, transitioning to FAILED", session_id)
                     await self.service.transition_state(session, PrankSessionState.FAILED)
                     return
-                await self.service.transition_state(session, PrankSessionState.PLAYING_AUDIO)
-                await self.telnyx.start_playback(sender_call_control_id)
-                task = asyncio.create_task(_call_timeout_worker(
-                    session_id=session.id,
-                    sender_call_control_id=sender_call_control_id,
-                    recipient_call_control_id=call_control_id,
-                ))
-                _active_tasks.add(task)
-                task.add_done_callback(_active_tasks.discard)
             elif event_type == PrankEventType.LEG_FAILED and leg == "recipient":
                 await self.service.transition_state(session, PrankSessionState.FAILED)
             elif event_type == PrankEventType.LEG_HANGUP and leg == "sender":
@@ -131,14 +127,47 @@ class PrankOrchestrator:
                 )
 
         elif state == PrankSessionState.BRIDGED:
-            raise ValueError(
-                f"Unexpected event {event_type} + leg={leg!r} in state {state.value}"
-            )
+            if event_type == PrankEventType.LEG_BRIDGED and leg == "sender":
+                logger.info("Session %s: bridge confirmed, waiting 300ms for media path, then starting playback", session_id)
+                sender_call_control_id = session.sender_call_control_id
+                recipient_call_control_id = session.recipient_call_control_id
+                await asyncio.sleep(0.3)
+                if session.state != PrankSessionState.BRIDGED:
+                    logger.debug("Playback skipped: session %s not in BRIDGED state", session.id)
+                    return
+                await asyncio.gather(
+                    self.telnyx.start_playback(sender_call_control_id, leg="sender", session_id=session.id),
+                    self.telnyx.start_playback(recipient_call_control_id, leg="recipient", session_id=session.id),
+                )
+                await self.service.transition_state(session, PrankSessionState.PLAYING_AUDIO)
+                task = asyncio.create_task(_call_timeout_worker(
+                    session_id=session.id,
+                    sender_call_control_id=sender_call_control_id,
+                    recipient_call_control_id=recipient_call_control_id,
+                ))
+                _active_tasks.add(task)
+                task.add_done_callback(_active_tasks.discard)
+            elif event_type == PrankEventType.LEG_BRIDGED and leg == "recipient":
+                logger.debug(
+                    "Ignoring call.bridged from %s leg for session %s",
+                    leg,
+                    session.id,
+                )
+                return
+            elif event_type in (PrankEventType.LEG_HANGUP, PrankEventType.LEG_FAILED):
+                await self.service.transition_state(session, PrankSessionState.FAILED)
+                logger.info("Session %s: leg lost before playback (event=%s leg=%s)", session_id, event_type, leg)
+            else:
+                raise ValueError(
+                    f"Unexpected event {event_type} + leg={leg!r} in state {state.value}"
+                )
 
         elif state == PrankSessionState.PLAYING_AUDIO:
             if event_type in (PrankEventType.LEG_HANGUP, PrankEventType.LEG_FAILED):
                 await self.service.transition_state(session, PrankSessionState.COMPLETED)
                 logger.info("Session %s: completed (event=%s leg=%s)", session_id, event_type, leg)
+            elif event_type == PrankEventType.LEG_BRIDGED:
+                logger.info("Session %s: late bridged event ignored (event=%s leg=%s)", session_id, event_type, leg)
             else:
                 raise ValueError(
                     f"Unexpected event {event_type} + leg={leg!r} in state {state.value}"
