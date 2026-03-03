@@ -1,6 +1,7 @@
 package com.example.haha.network
 
 import retrofit2.Call
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
@@ -22,6 +23,11 @@ interface ApiService {
         @Field("password") password: String
     ): Call<TokenResponse>
 
+    // Callback-based — used by LoginActivity
     @GET("me")
     fun me(@Header("Authorization") bearer: String): Call<MeResponse>
+
+    // Suspend — used by AuthViewModel
+    @GET("me")
+    suspend fun getMe(@Header("Authorization") bearer: String): Response<MeResponse>
 }
