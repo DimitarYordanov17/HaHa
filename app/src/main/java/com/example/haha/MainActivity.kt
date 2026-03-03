@@ -1,22 +1,28 @@
 package com.example.haha
 
 import android.os.Bundle
-import android.util.Log
-import androidx.appcompat.app.AppCompatActivity
-import com.example.haha.network.RegisterRequest
-import com.example.haha.network.RetrofitClient
-import com.example.haha.network.TokenResponse
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 
-class MainActivity : AppCompatActivity() {
-
-    private val TAG = "MainActivity"
+class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-
+        setContent {
+            MaterialTheme {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Compose Root")
+                }
+            }
+        }
     }
 }
