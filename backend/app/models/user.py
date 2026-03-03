@@ -15,15 +15,14 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False,
-    )
-    # Billing: number of prank credits remaining.  Deduction logic is not
-    # implemented yet; this column is the schema foundation only.
+    phone_number: Mapped[str] = mapped_column(String(50), nullable=False)
     credits: Mapped[int] = mapped_column(
         Integer,
         server_default=text("0"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )

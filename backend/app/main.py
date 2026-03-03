@@ -37,16 +37,68 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # ---------- schemas ----------
 
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
+    phone_number: str
 
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class UserResponse(BaseModel):
+    id: UUID
+    email: str
+    phone_number: str
+    credits: int
+
+    class Config:
+        from_attributes = True
+
+
+class StartPrankRequest(BaseModel):
+    recipient_phone_number: str
+
+
+class DevStartPrankRequest(BaseModel):
+    sender_phone: str
+    recipient_phone: str
+
+
+# ---------- shared prank helper ----------
+
+async def _initiate_prank_session(
+    sender_phone: str,
+    recipient_phone: str,
+    user_id: UUID,
+    db: AsyncSession,
+) -> UUID:
+    service = PrankSessionService(db)
+    session = await service.create_session(
+        sender_number=sender_phone,
+        recipient_number=recipient_phone,
+        user_id=user_id,
+    )
+    logger.info(
+        "Session %s created for sender=%s recipient=%s",
+        session.id, sender_phone, recipient_phone,
+    )
+    await service.transition_state(session, PrankSessionState.CALLING_SENDER)
+
+    telnyx = TelnyxCallService()
+    await telnyx.create_outbound_call(
+        to_number=sender_phone,
+        from_number=os.environ["TELNYX_NUMBER"],
+        session_id=session.id,
+        leg="sender",
+    )
+
+    return session.id
 
 
 # ---------- routes ----------
@@ -57,7 +109,11 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    user = User(email=body.email, hashed_password=hash_password(body.password))
+    user = User(
+        email=body.email,
+        hashed_password=hash_password(body.password),
+        phone_number=body.phone_number,
+    )
     db.add(user)
     await db.commit()
 
@@ -75,9 +131,27 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     return TokenResponse(access_token=token)
 
 
-@app.get("/me")
+@app.get("/me", response_model=UserResponse)
 async def me(current_user: User = Depends(get_current_user)):
-    return {"id": current_user.id, "email": current_user.email, "credits": current_user.credits}
+    return current_user
+
+
+@app.post("/start-prank", status_code=200)
+async def start_prank(
+    body: StartPrankRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.credits < 1:
+        raise HTTPException(status_code=400, detail="Insufficient credits")
+
+    session_id = await _initiate_prank_session(
+        sender_phone=current_user.phone_number,
+        recipient_phone=body.recipient_phone_number,
+        user_id=current_user.id,
+        db=db,
+    )
+    return {"session_id": session_id}
 
 
 # ---------- telnyx webhooks ----------
@@ -135,35 +209,19 @@ async def telnyx_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
 # ---------- dev endpoints ----------
 
-class StartPrankRequest(BaseModel):
-    sender_phone: str
-    recipient_phone: str
-
-
 @app.post("/dev/start-prank", status_code=200)
 async def dev_start_prank(
-    body: StartPrankRequest,
+    body: DevStartPrankRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if current_user.credits < 1:
         raise HTTPException(status_code=400, detail="Insufficient credits")
 
-    service = PrankSessionService(db)
-    session = await service.create_session(
-        sender_number=body.sender_phone,
-        recipient_number=body.recipient_phone,
+    session_id = await _initiate_prank_session(
+        sender_phone=body.sender_phone,
+        recipient_phone=body.recipient_phone,
         user_id=current_user.id,
+        db=db,
     )
-    logger.info("Session %s created for sender=%s recipient=%s", session.id, body.sender_phone, body.recipient_phone)
-    await service.transition_state(session, PrankSessionState.CALLING_SENDER)
-
-    telnyx = TelnyxCallService()
-    await telnyx.create_outbound_call(
-        to_number=body.sender_phone,
-        from_number=os.environ["TELNYX_NUMBER"],
-        session_id=session.id,
-        leg="sender",
-    )
-
-    return {"session_id": session.id}
+    return {"session_id": session_id}

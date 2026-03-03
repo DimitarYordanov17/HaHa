@@ -39,7 +39,7 @@ interface ApiService {
     @GET("me")
     suspend fun getMe(): Response<MeResponse>
 
-    @POST("pranks")
+    @POST("start-prank")
     suspend fun createSession(@Body body: CreateSessionRequest): Response<SessionDto>
 
     @GET("pranks/{id}")

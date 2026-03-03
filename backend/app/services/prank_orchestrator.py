@@ -102,7 +102,7 @@ class PrankOrchestrator:
                 await self.service.transition_state(session, PrankSessionState.CALLING_RECIPIENT)
                 await self.telnyx.create_outbound_call(
                     to_number=session.recipient_number,
-                    from_number=session.sender_number,
+                    from_number=os.environ["TELNYX_NUMBER"],
                     session_id=session.id,
                     leg="recipient",
                 )

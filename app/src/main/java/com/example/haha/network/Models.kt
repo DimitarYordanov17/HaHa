@@ -11,7 +11,7 @@ data class RegisterRequest(
 )
 
 data class CreateSessionRequest(
-    val recipient: String
+    @SerializedName("recipient_phone_number") val recipient: String
 )
 
 // LoginRequest is not needed — login uses @FormUrlEncoded fields directly in ApiService.
