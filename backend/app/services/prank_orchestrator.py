@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 _active_tasks: set[asyncio.Task] = set()
 _session_locks: dict[UUID, asyncio.Lock] = {}
+_streaming_started: set[UUID] = set()  # guard against duplicate call.bridged events
 
 
 async def _call_timeout_worker(
@@ -147,10 +148,17 @@ class PrankOrchestrator:
                 if session.state != PrankSessionState.BRIDGED:
                     logger.debug("Playback skipped: session %s not in BRIDGED state", session.id)
                     return
-                await asyncio.gather(
+                stream_url = f"{os.environ['PUBLIC_WS_URL']}/ws/telnyx-media"
+                gather_coros = [
                     self.telnyx.start_playback(sender_call_control_id, leg="sender", session_id=session.id),
                     self.telnyx.start_playback(recipient_call_control_id, leg="recipient", session_id=session.id),
-                )
+                ]
+                if session.id not in _streaming_started:
+                    _streaming_started.add(session.id)
+                    gather_coros.append(self.telnyx.start_streaming(recipient_call_control_id, stream_url))
+                else:
+                    logger.warning("Session %s: duplicate call.bridged — skipping start_streaming", session.id)
+                await asyncio.gather(*gather_coros)
                 await self.service.transition_state(session, PrankSessionState.PLAYING_AUDIO)
                 task = asyncio.create_task(_call_timeout_worker(
                     session_id=session.id,

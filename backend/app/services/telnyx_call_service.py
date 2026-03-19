@@ -87,6 +87,25 @@ class TelnyxCallService:
 
         await self._retry(_do)
 
+    async def start_streaming(self, call_control_id: str, stream_url: str) -> None:
+        async def _do():
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self._BASE}/calls/{call_control_id}/actions/streaming_start",
+                    headers=self._headers(),
+                    json={"stream_url": stream_url, "stream_track": "inbound_track"},
+                )
+                response.raise_for_status()
+                return response
+
+        response = await self._retry(_do)
+        logger.info(
+            "STREAMING_STARTED ccid=%s stream_url=%s status=%s",
+            call_control_id,
+            stream_url,
+            response.status_code,
+        )
+
     async def start_playback(
         self,
         call_control_id: str,

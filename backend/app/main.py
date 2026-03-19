@@ -1,3 +1,4 @@
+import audioop
 import base64
 import json
 import logging
@@ -5,7 +6,12 @@ import os
 from contextlib import asynccontextmanager
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Depends, Request
+logging.basicConfig(level=logging.INFO)
+# silence noisy third-party libs
+for _noisy in ("httpcore", "httpx", "websockets", "asyncio"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
+from fastapi import FastAPI, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -16,6 +22,7 @@ from app.models import User
 from app.auth import hash_password, verify_password, create_access_token
 from app.dependencies import get_current_user
 from app.services.prank_orchestrator import PrankOrchestrator, PrankEventType
+from app.services.stt.deepgram_stream import DeepgramStreamClient
 from app.services.prank_session_service import PrankSessionService
 from app.services.telnyx_call_service import TelnyxCallService
 from app.models.prank_session import PrankSessionState
@@ -225,3 +232,71 @@ async def dev_start_prank(
         db=db,
     )
     return {"session_id": session_id}
+
+
+# ---------- telnyx media stream (STT test) ----------
+
+@app.websocket("/ws/telnyx-media")
+async def telnyx_media_ws(websocket: WebSocket):
+    """
+    Receives Telnyx media stream events and pipes audio to Deepgram STT.
+    MVP test only — transcripts are logged, not forwarded to the orchestrator.
+    """
+    print("[STT_WS] WebSocket connection incoming", flush=True)
+    await websocket.accept()
+    print("[STT_WS] WebSocket accepted", flush=True)
+    logger.info("[STT_WS] WebSocket accepted")
+
+    stt = DeepgramStreamClient()
+    try:
+        await stt.connect()
+        print("[STT_WS] Deepgram connected", flush=True)
+    except Exception as exc:
+        print(f"[STT_WS] FAILED to connect to Deepgram: {exc}", flush=True)
+        logger.exception("STT_WS failed to connect to Deepgram")
+        await websocket.close()
+        return
+
+    frame_count = 0
+    try:
+        while True:
+            raw = await websocket.receive_text()
+
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                logger.warning("[STT_WS] JSON decode error, skipping")
+                continue
+
+            event = msg.get("event")
+
+            if event == "connected":
+                logger.info("[STT_WS] telnyx stream connected")
+
+            elif event == "start":
+                media_fmt = msg.get("start", {}).get("media_format", {})
+                logger.info("[STT_WS] telnyx stream started encoding=%s sample_rate=%s",
+                            media_fmt.get("encoding"), media_fmt.get("sample_rate"))
+
+            elif event == "media":
+                frame_count += 1
+                payload_b64 = msg.get("media", {}).get("payload", "")
+                if payload_b64:
+                    pcma_bytes = base64.b64decode(payload_b64)
+                    linear16_bytes = audioop.alaw2lin(pcma_bytes, 2)
+                    await stt.send_audio(linear16_bytes)
+
+            elif event == "stop":
+                logger.info("[STT_WS] telnyx stream stopped after %d frames", frame_count)
+                break
+
+            else:
+                logger.debug("[STT_WS] unknown event: %s", event)
+
+    except WebSocketDisconnect:
+        logger.info("[STT_WS] client disconnected after %d frames", frame_count)
+    except Exception as exc:
+        logger.exception("[STT_WS] unexpected error: %s", exc)
+    finally:
+        await stt.close()
+        logger.info("[STT_WS] session ended, total frames forwarded: %d", frame_count)
