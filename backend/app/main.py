@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Depends, Request
@@ -70,6 +71,13 @@ class DevStartPrankRequest(BaseModel):
     recipient_phone: str
 
 
+class PrankSessionResponse(BaseModel):
+    id: str
+    state: str
+    recipient: str
+    created_at: datetime
+
+
 # ---------- shared prank helper ----------
 
 async def _initiate_prank_session(
@@ -77,7 +85,7 @@ async def _initiate_prank_session(
     recipient_phone: str,
     user_id: UUID,
     db: AsyncSession,
-) -> UUID:
+):
     service = PrankSessionService(db)
     session = await service.create_session(
         sender_number=sender_phone,
@@ -98,7 +106,7 @@ async def _initiate_prank_session(
         leg="sender",
     )
 
-    return session.id
+    return session
 
 
 # ---------- routes ----------
@@ -136,7 +144,7 @@ async def me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@app.post("/start-prank", status_code=200)
+@app.post("/start-prank", response_model=PrankSessionResponse, status_code=200)
 async def start_prank(
     body: StartPrankRequest,
     db: AsyncSession = Depends(get_db),
@@ -145,13 +153,39 @@ async def start_prank(
     if current_user.credits < 1:
         raise HTTPException(status_code=400, detail="Insufficient credits")
 
-    session_id = await _initiate_prank_session(
+    session = await _initiate_prank_session(
         sender_phone=current_user.phone_number,
         recipient_phone=body.recipient_phone_number,
         user_id=current_user.id,
         db=db,
     )
-    return {"session_id": session_id}
+    return PrankSessionResponse(
+        id=str(session.id),
+        state=session.state.value,
+        recipient=session.recipient_number,
+        created_at=session.created_at,
+    )
+
+
+@app.get("/pranks/{session_id}", response_model=PrankSessionResponse)
+async def get_prank_session(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    service = PrankSessionService(db)
+    try:
+        session = await service.get_session(session_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return PrankSessionResponse(
+        id=str(session.id),
+        state=session.state.value,
+        recipient=session.recipient_number,
+        created_at=session.created_at,
+    )
 
 
 # ---------- telnyx webhooks ----------
@@ -218,10 +252,10 @@ async def dev_start_prank(
     if current_user.credits < 1:
         raise HTTPException(status_code=400, detail="Insufficient credits")
 
-    session_id = await _initiate_prank_session(
+    session = await _initiate_prank_session(
         sender_phone=body.sender_phone,
         recipient_phone=body.recipient_phone,
         user_id=current_user.id,
         db=db,
     )
-    return {"session_id": session_id}
+    return {"session_id": str(session.id)}
