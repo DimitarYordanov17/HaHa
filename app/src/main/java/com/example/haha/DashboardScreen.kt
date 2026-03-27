@@ -30,18 +30,18 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 
 // ── Color tokens ─────────────────────────────────────────────────────────────
-private val Zinc950  = Color(0xFF09090B)
-private val Zinc900  = Color(0xFF18181B)
-private val Zinc800  = Color(0xFF27272A)
-private val Zinc700  = Color(0xFF3F3F46)
-private val Zinc600  = Color(0xFF52525B)
-private val Zinc500  = Color(0xFF71717A)
-private val Zinc400  = Color(0xFFA1A1AA)
-private val Zinc200  = Color(0xFFE4E4E7)
-private val Purple600 = Color(0xFF9333EA)
+private val Zinc950   = AppColors.Background
+private val Zinc900   = AppColors.Surface
+private val Zinc800   = Color(0xFF27272A)
+private val Zinc700   = Color(0xFF3F3F46)
+private val Zinc600   = Color(0xFF52525B)
+private val Zinc500   = AppColors.TextMuted
+private val Zinc400   = Color(0xFFA1A1AA)
+private val Zinc200   = Color(0xFFE4E4E7)
+private val Purple600 = AppColors.Accent
 private val Purple500 = Color(0xFFA855F7)
-private val Purple400 = Color(0xFFC084FC)
-private val Pink600   = Color(0xFFDB2777)
+private val Purple400 = AppColors.AccentLight
+private val Pink600   = AppColors.AccentPink
 private val Green600  = Color(0xFF16A34A)
 private val Green400  = Color(0xFF4ADE80)
 private val Red400    = Color(0xFFF87171)

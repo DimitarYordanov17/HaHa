@@ -16,21 +16,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val _Zinc950  = Color(0xFF09090B)
-private val _Zinc900  = Color(0xFF18181B)
-private val _Zinc800  = Color(0xFF27272A)
-private val _Zinc500  = Color(0xFF71717A)
-private val _Zinc400  = Color(0xFFA1A1AA)
-private val _Purple600 = Color(0xFF9333EA)
-private val _Purple400 = Color(0xFFC084FC)
-private val _Pink600   = Color(0xFFDB2777)
-
 @Composable
 fun ActiveSessionScreen(session: Session) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(_Zinc950)
+            .background(AppColors.Background)
             .padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -43,7 +34,7 @@ fun ActiveSessionScreen(session: Session) {
                     .clip(CircleShape)
                     .background(
                         Brush.radialGradient(
-                            listOf(_Purple600.copy(alpha = 0.25f), Color.Transparent)
+                            listOf(AppColors.Accent.copy(alpha = 0.25f), Color.Transparent)
                         )
                     )
             )
@@ -52,7 +43,7 @@ fun ActiveSessionScreen(session: Session) {
                     .size(72.dp)
                     .clip(CircleShape)
                     .background(
-                        Brush.linearGradient(listOf(_Purple600, _Pink600))
+                        Brush.linearGradient(listOf(AppColors.Accent, AppColors.AccentPink))
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -73,7 +64,7 @@ fun ActiveSessionScreen(session: Session) {
 
         Text(
             "Свързваме се с ${session.recipient}",
-            color = _Zinc500,
+            color = AppColors.TextMuted,
             fontSize = 14.sp
         )
 
@@ -84,13 +75,13 @@ fun ActiveSessionScreen(session: Session) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(20.dp))
-                .background(_Zinc900)
+                .background(AppColors.Surface)
                 .padding(20.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     "ДЕТАЙЛИ НА СЕСИЯТА",
-                    color = _Zinc500,
+                    color = AppColors.TextMuted,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.5.sp
@@ -104,7 +95,7 @@ fun ActiveSessionScreen(session: Session) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(label, color = _Zinc500, fontSize = 13.sp)
+                        Text(label, color = AppColors.TextMuted, fontSize = 13.sp)
                         Text(
                             value,
                             color = Color.White,
@@ -118,6 +109,6 @@ fun ActiveSessionScreen(session: Session) {
 
         Spacer(modifier = Modifier.height(28.dp))
 
-        CircularProgressIndicator(color = _Purple400, strokeWidth = 2.5.dp)
+        CircularProgressIndicator(color = AppColors.AccentLight, strokeWidth = 2.5.dp)
     }
 }
