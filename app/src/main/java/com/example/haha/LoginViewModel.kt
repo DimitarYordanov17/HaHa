@@ -29,7 +29,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _uiState.value = LoginUiState.Loading
             try {
-                val response = RetrofitClient.api.loginSuspend(email.value, password.value)
+                val response = RetrofitClient.api.loginSuspend(email.value.trim(), password.value)
                 if (response.isSuccessful) {
                     val token = response.body()?.accessToken
                     if (token == null) {
