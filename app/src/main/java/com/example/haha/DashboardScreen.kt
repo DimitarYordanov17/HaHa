@@ -94,7 +94,8 @@ fun DashboardScreen(
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                SessionEvent.Bridged -> onBridged()
+                SessionEvent.Bridged,
+                SessionEvent.CreditsDeducted -> onBridged()
             }
         }
     }
