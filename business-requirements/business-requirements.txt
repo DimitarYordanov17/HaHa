@@ -9,3 +9,41 @@
 Architecture:
 [*] Authoring Assistant & Runtime Call Agent
 [*] Intent-driven response
+
+
+
+Outcome:
+Hook (0–5s) – “why is this person calling me?”
+Orientation (5–15s) – “what is this about?”
+Cognitive dissonance (15–35s) – “this doesn’t make sense”
+Peak (35–50s) – confusion/awkwardness spikes
+Exit (≤60s) – clean stop before it collapses
+
+Premise type:
+Complaint (you caused a problem)
+Report/Witness (I saw something involving you)
+Mistaken context (I think you’re involved in X)
+Offer/Opportunity (you won something / can get something)
+Awkward find (you left something)
+Quality critique (your thing is… off)
+
+Emotional layer:
+Confusion
+Embarrassment
+Mild defensiveness
+Curiosity
+Social awkwardness
+
+
+3 moves:
+State: “портокалите ви имат странен вкус”
+Clarify: “като нещо… не мога да го определя”
+Twist: “като прилепа от Ковид”
+
+overly serious
+confused witness
+polite but off
+slightly irritated
+too enthusiastic
+
+Humour engineering
