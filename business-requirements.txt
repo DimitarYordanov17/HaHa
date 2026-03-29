@@ -1,6 +1,0 @@
-1. The assistant should lead the user
-    - Funny, devious, cool behavior
-
-2. Final card created
-3. Runtime isn't 100% open-ended
-4. It's mainly the agent talking, we don't allow the callee for big dynamic
