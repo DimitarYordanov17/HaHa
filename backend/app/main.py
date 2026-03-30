@@ -23,6 +23,8 @@ from app.models.prank_session import PrankSessionState
 
 from fastapi.staticfiles import StaticFiles
 
+from app.api.authoring import router as authoring_router
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,6 +40,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.include_router(authoring_router)
 
 # ---------- schemas ----------
 
