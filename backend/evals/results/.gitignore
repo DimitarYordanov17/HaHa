@@ -1,0 +1,4 @@
+# Ignore generated eval results — keep only .gitkeep
+*
+!.gitkeep
+!.gitignore
