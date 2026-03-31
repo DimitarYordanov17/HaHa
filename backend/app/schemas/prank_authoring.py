@@ -165,6 +165,7 @@ class AuthoringSession(BaseModel):
     messages: list[AuthoringMessage]
     latest_assistant_question: Optional[str] = None
     is_complete: bool = False
+    recipient_phone: Optional[str] = None
 
 
 # ---------- request / response models ----------
@@ -187,3 +188,7 @@ class SendMessageResponse(BaseModel):
     status: AuthoringStatus
     is_complete: bool
     session: AuthoringSession
+
+
+class SetPhoneRequest(BaseModel):
+    phone: str

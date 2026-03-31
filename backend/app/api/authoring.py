@@ -1,11 +1,12 @@
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from app.schemas.prank_authoring import (
     CreateSessionResponse,
     GetSessionResponse,
     SendMessageRequest,
     SendMessageResponse,
+    SetPhoneRequest,
 )
 from app.services.authoring_store import authoring_store
 from app.services.authoring_engine import process_turn
@@ -36,15 +37,12 @@ async def send_authoring_message(session_id: str, body: SendMessageRequest):
     """
     Send a user message into the authoring session.
 
-    This is the core endpoint for the guided prank authoring loop.
-    Returns the assistant reply, updated prank draft, and session status.
+    Continues to accept messages even after the prank is marked ready,
+    so the user can continue editing without losing session context.
     """
     session = authoring_store.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Authoring session not found")
-
-    if session.is_complete:
-        raise HTTPException(status_code=400, detail="Authoring session is already complete")
 
     try:
         assistant_reply = process_turn(authoring_store, session_id, body.content)
@@ -61,3 +59,13 @@ async def send_authoring_message(session_id: str, body: SendMessageRequest):
         is_complete=session.is_complete,
         session=session,
     )
+
+
+@router.put("/sessions/{session_id}/phone", status_code=204)
+async def set_recipient_phone(session_id: str, body: SetPhoneRequest):
+    """Store the recipient phone number for this authoring session."""
+    session = authoring_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Authoring session not found")
+    authoring_store.set_recipient_phone(session_id, body.phone)
+    return Response(status_code=204)

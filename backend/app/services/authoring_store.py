@@ -27,15 +27,21 @@ class AuthoringStore:
 
     def create_session(self) -> AuthoringSession:
         now = datetime.now(timezone.utc)
+        welcome = AuthoringMessage(
+            role=MessageRole.ASSISTANT,
+            content="Разкажи ми — какъв пранк искаш да направиш?",
+            timestamp=now,
+        )
         session = AuthoringSession(
             id=str(uuid.uuid4()),
             created_at=now,
             updated_at=now,
             status=AuthoringStatus.COLLECTING_INFO,
             draft=PrankDraft(),
-            messages=[],
+            messages=[welcome],
             latest_assistant_question=None,
             is_complete=False,
+            recipient_phone=None,
         )
         self._sessions[session.id] = session
         logger.info("AuthoringStore: created session %s", session.id)
@@ -54,6 +60,12 @@ class AuthoringStore:
             )
         )
         session.updated_at = datetime.now(timezone.utc)
+
+    def set_recipient_phone(self, session_id: str, phone: str) -> None:
+        session = self._sessions[session_id]
+        session.recipient_phone = phone
+        session.updated_at = datetime.now(timezone.utc)
+        logger.info("AuthoringStore: set recipient_phone for session %s", session_id)
 
     def update_session(
         self,
