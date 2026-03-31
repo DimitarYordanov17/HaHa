@@ -23,18 +23,21 @@ class AuthoringViewModel : ViewModel() {
 
             repository.createSession()
                 .onSuccess { session ->
-                    // Backend returns empty messages on creation — inject welcome locally.
-                    val welcome = AuthoringChatMsg(
-                        id = 0L,
-                        role = "assistant",
-                        text = "Здравей! Аз съм твоят пранк асистент. Разкажи ми — какъв пранк искаш да направиш?",
-                    )
+                    // Backend owns the welcome message — read from session.messages.
+                    val messages = session.messages.mapIndexed { idx, msg ->
+                        AuthoringChatMsg(
+                            id = idx.toLong(),
+                            role = msg.role,
+                            text = msg.content,
+                        )
+                    }
                     _state.value = _state.value.copy(
                         sessionId = session.id,
-                        messages = listOf(welcome),
+                        messages = messages,
                         draft = session.draft,
                         status = session.status,
                         isReady = session.isComplete,
+                        recipientPhone = session.recipientPhone,
                         isLoading = false,
                     )
                 }
@@ -83,6 +86,19 @@ class AuthoringViewModel : ViewModel() {
                         isLoading = false,
                         error = e.message ?: "Грешка при изпращане",
                     )
+                }
+        }
+    }
+
+    fun submitRecipientPhone(phone: String) {
+        val sessionId = _state.value.sessionId ?: return
+        viewModelScope.launch {
+            repository.setRecipientPhone(sessionId, phone)
+                .onSuccess {
+                    _state.value = _state.value.copy(recipientPhone = phone)
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = e.message ?: "Грешка при запис на номера")
                 }
         }
     }

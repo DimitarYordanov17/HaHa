@@ -4,6 +4,7 @@ import com.example.haha.network.AuthoringSessionDto
 import com.example.haha.network.RetrofitClient
 import com.example.haha.network.SendAuthoringMessageRequest
 import com.example.haha.network.SendAuthoringMessageResponse
+import com.example.haha.network.SetRecipientPhoneRequest
 
 class AuthoringRepository {
 
@@ -28,6 +29,22 @@ class AuthoringRepository {
             )
             if (response.isSuccessful) {
                 Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("HTTP ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun setRecipientPhone(sessionId: String, phone: String): Result<Unit> {
+        return try {
+            val response = RetrofitClient.api.setRecipientPhone(
+                sessionId = sessionId,
+                body = SetRecipientPhoneRequest(phone = phone)
+            )
+            if (response.isSuccessful) {
+                Result.success(Unit)
             } else {
                 Result.failure(Exception("HTTP ${response.code()}"))
             }

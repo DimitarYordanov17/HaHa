@@ -50,12 +50,17 @@ data class AuthoringSessionDto(
     val messages: List<AuthoringMessageDto>,
     @SerializedName("latest_assistant_question") val latestAssistantQuestion: String?,
     @SerializedName("is_complete") val isComplete: Boolean,
+    @SerializedName("recipient_phone") val recipientPhone: String?,
 )
 
 // ─── Requests ────────────────────────────────────────────────────────────────
 
 data class SendAuthoringMessageRequest(
     val content: String,
+)
+
+data class SetRecipientPhoneRequest(
+    val phone: String,
 )
 
 // ─── Responses ───────────────────────────────────────────────────────────────

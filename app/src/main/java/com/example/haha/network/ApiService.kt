@@ -7,6 +7,7 @@ import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 
 interface ApiService {
@@ -60,4 +61,10 @@ interface ApiService {
     suspend fun getAuthoringSession(
         @Path("sessionId") sessionId: String
     ): Response<GetAuthoringSessionResponse>
+
+    @PUT("authoring/sessions/{sessionId}/phone")
+    suspend fun setRecipientPhone(
+        @Path("sessionId") sessionId: String,
+        @Body body: SetRecipientPhoneRequest
+    ): Response<Unit>
 }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -21,11 +22,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.haha.network.PrankDraftDto
 
 // ── Color tokens ─────────────────────────────────────────────────────────────
 private val Zinc950   = AppColors.Background
@@ -43,8 +43,6 @@ private val Pink600   = AppColors.AccentPink
 private val Green600  = Color(0xFF16A34A)
 private val Green400  = Color(0xFF4ADE80)
 private val Red400    = Color(0xFFF87171)
-private val Yellow400 = Color(0xFFFACC15)
-private val Blue400   = Color(0xFF60A5FA)
 
 // ── Nav tabs ──────────────────────────────────────────────────────────────────
 private enum class Tab { PRANK, HISTORY, BUY, PROFILE }
@@ -98,7 +96,9 @@ fun DashboardScreen(
                 .background(Zinc950)
         ) {
             when (activeTab) {
-                Tab.PRANK   -> PrankBuilderTab()
+                Tab.PRANK   -> PrankBuilderTab(
+                    onStartPrank = { phone -> viewModel.startSession(phone) }
+                )
                 Tab.HISTORY -> HistoryTab(onNewPrank = { activeTab = Tab.PRANK })
                 Tab.BUY     -> BuyTab(credits = user.credits)
                 Tab.PROFILE -> ProfileTab(user = user, onNavigate = { activeTab = it })
@@ -201,17 +201,21 @@ private fun AppBottomNav(activeTab: Tab, onTabSelected: (Tab) -> Unit) {
 // ── Prank Builder tab — System 1 guided authoring ─────────────────────────────
 @Composable
 private fun PrankBuilderTab(
-    viewModel: AuthoringViewModel = viewModel()
+    viewModel: AuthoringViewModel = viewModel(),
+    onStartPrank: (String) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     var inputText by remember { mutableStateOf("") }
+    // Local editing mode: lets user keep chatting after prank is ready without resetting session
+    var editingMode by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // Scroll to bottom on new message
+    // Reset editing mode when a new session starts
+    LaunchedEffect(state.sessionId) { editingMode = false }
+
+    // Scroll to bottom on new message or when card appears
     LaunchedEffect(state.messages.size) {
-        if (state.messages.isNotEmpty()) {
-            listState.animateScrollToItem(state.messages.lastIndex)
-        }
+        if (state.messages.isNotEmpty()) listState.animateScrollToItem(state.messages.lastIndex)
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Zinc950)) {
@@ -223,50 +227,39 @@ private fun PrankBuilderTab(
                 .background(Zinc950)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Column {
-                Text("Пранк Асистент", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text("AI асистент", color = Zinc500, fontSize = 10.sp)
+            Text("Асистент", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            if (editingMode) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Zinc800)
+                        .clickable { editingMode = false }
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text("← Картата", color = Purple400, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                }
             }
         }
         HorizontalDivider(color = Zinc800.copy(alpha = 0.6f), thickness = 0.5.dp)
 
-        // Ready banner
-        if (state.isReady) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Green600.copy(alpha = 0.15f))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("✅", fontSize = 14.sp)
-                Text(
-                    "Пранкът е готов!",
-                    color = Green400,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-
-        // Thinking indicator (after session is created, while waiting for reply)
+        // Thinking indicator — visible only while waiting for backend (not during initial session load)
         if (state.isLoading && state.sessionId != null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Purple600.copy(alpha = 0.10f))
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                    .background(Zinc900)
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                CircularProgressIndicator(modifier = Modifier.size(12.dp), color = Purple400, strokeWidth = 2.dp)
-                Text("Мисля...", color = Purple400, fontSize = 11.sp)
+                CircularProgressIndicator(modifier = Modifier.size(11.dp), color = Purple400, strokeWidth = 2.dp)
+                Text("Мисля...", color = Zinc400, fontSize = 11.sp)
             }
         }
 
-        // Messages + draft preview
+        // Messages (pure chat — no draft cards during authoring)
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
@@ -282,15 +275,9 @@ private fun PrankBuilderTab(
                     )
                 )
             }
-            val draft = state.draft
-            if (draft != null && (draft.caller != null || draft.targetEffect != null || draft.progression != null)) {
-                item(key = "draft_preview") {
-                    DraftPreviewCard(draft = draft)
-                }
-            }
         }
 
-        // Error
+        // Error (inline, below messages)
         val errorMsg = state.error
         if (errorMsg != null) {
             Text(
@@ -301,60 +288,139 @@ private fun PrankBuilderTab(
             )
         }
 
-        // Reset button (visible only when ready)
-        if (state.isReady) {
-            Button(
-                onClick = { viewModel.reset() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Purple600),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text("Нов пранк", color = Color.White, fontWeight = FontWeight.Bold)
-            }
-        }
-
         HorizontalDivider(color = Zinc800.copy(alpha = 0.6f), thickness = 0.5.dp)
 
-        // Input bar
-        Row(
+        // Bottom area — switches based on state
+        val recipientPhone = state.recipientPhone
+        when {
+            // Chat is active (authoring in progress, or user is in editing mode)
+            !state.isReady || editingMode -> {
+                ChatInputBar(
+                    inputText = inputText,
+                    onInputChange = { inputText = it },
+                    enabled = !state.isLoading && state.sessionId != null,
+                    onSend = {
+                        val text = inputText.trim()
+                        inputText = ""
+                        viewModel.sendMessage(text)
+                    }
+                )
+            }
+
+            // Prank ready — collect recipient phone number
+            recipientPhone == null -> {
+                PhoneCollectionBar(
+                    onSubmit = { phone -> viewModel.submitRecipientPhone(phone) }
+                )
+            }
+
+            // Prank ready + phone collected — show prank card with actions
+            else -> {
+                PrankReadyCard(
+                    recipientPhone = recipientPhone,
+                    onStartPrank = { onStartPrank(recipientPhone) },
+                    onContinueEditing = { editingMode = true },
+                    onNewPrank = { viewModel.reset() },
+                )
+            }
+        }
+    }
+}
+
+// ── Chat input bar ────────────────────────────────────────────────────────────
+@Composable
+private fun ChatInputBar(
+    inputText: String,
+    onInputChange: (String) -> Unit,
+    enabled: Boolean,
+    onSend: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Zinc950)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TextField(
+            value = inputText,
+            onValueChange = onInputChange,
+            placeholder = {
+                Text(
+                    text = if (enabled) "Напиши съобщение..." else "Зареждане...",
+                    color = Zinc600, fontSize = 14.sp
+                )
+            },
+            enabled = enabled,
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(20.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Zinc800,
+                unfocusedContainerColor = Zinc800,
+                disabledContainerColor = Zinc800.copy(alpha = 0.5f),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                disabledTextColor = Zinc500,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+                cursorColor = Purple400,
+            )
+        )
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(Zinc950)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .size(44.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    if (inputText.isNotBlank() && enabled) Purple600
+                    else Purple600.copy(alpha = 0.3f)
+                )
+                .clickable(enabled = inputText.isNotBlank() && enabled) { onSend() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Send, contentDescription = "Изпрати", tint = Color.White, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+// ── Phone collection bar ──────────────────────────────────────────────────────
+@Composable
+private fun PhoneCollectionBar(onSubmit: (String) -> Unit) {
+    var phoneText by remember { mutableStateOf("") }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Zinc900)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            "На кой номер да се обадим?",
+            color = Zinc400,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val inputDisabled = state.isLoading || state.isReady || state.sessionId == null
-
             TextField(
-                value = inputText,
-                onValueChange = { inputText = it },
-                placeholder = {
-                    Text(
-                        text = when {
-                            state.isReady -> "Пранкът е готов!"
-                            state.sessionId == null -> "Зареждане..."
-                            else -> "Напиши съобщение..."
-                        },
-                        color = Zinc600, fontSize = 14.sp
-                    )
-                },
-                enabled = !inputDisabled,
+                value = phoneText,
+                onValueChange = { phoneText = it },
+                placeholder = { Text("+359 88 ...", color = Zinc600, fontSize = 14.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true,
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(20.dp),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Zinc800,
                     unfocusedContainerColor = Zinc800,
-                    disabledContainerColor = Zinc800.copy(alpha = 0.5f),
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
-                    disabledTextColor = Zinc500,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
                     cursorColor = Purple400,
                 )
             )
@@ -362,74 +428,89 @@ private fun PrankBuilderTab(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        if (inputText.isNotBlank() && !inputDisabled) Purple600
-                        else Purple600.copy(alpha = 0.3f)
-                    )
-                    .clickable(enabled = inputText.isNotBlank() && !inputDisabled) {
-                        val text = inputText.trim()
-                        inputText = ""
-                        viewModel.sendMessage(text)
-                    },
+                    .background(if (phoneText.isNotBlank()) Purple600 else Purple600.copy(alpha = 0.3f))
+                    .clickable(enabled = phoneText.isNotBlank()) { onSubmit(phoneText.trim()) },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Send, contentDescription = "Изпрати", tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.ArrowForward, contentDescription = "Потвърди", tint = Color.White, modifier = Modifier.size(18.dp))
             }
         }
     }
 }
 
-// ── Draft preview card ────────────────────────────────────────────────────────
+// ── Prank ready card ──────────────────────────────────────────────────────────
 @Composable
-private fun DraftPreviewCard(draft: PrankDraftDto) {
+private fun PrankReadyCard(
+    recipientPhone: String,
+    onStartPrank: () -> Unit,
+    onContinueEditing: () -> Unit,
+    onNewPrank: () -> Unit,
+) {
     Surface(
         color = Zinc900,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                "ПРАНК ДЕТАЙЛИ",
-                color = Zinc500,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.5.sp
-            )
-            draft.caller?.let { caller ->
-                DraftRow(label = "Персонаж", value = "${caller.persona} · ${caller.tone}")
+            // Header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("🎭", fontSize = 18.sp)
+                Text("Пранкът е готов", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
-            draft.targetEffect?.let { effect ->
-                DraftRow(label = "Ефект", value = effect.intendedEmotion)
+            // Recipient
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Получател", color = Zinc500, fontSize = 13.sp)
+                Text(recipientPhone, color = Zinc200, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }
-            draft.progression?.let { prog ->
-                DraftRow(label = "Начало", value = prog.opening)
+            HorizontalDivider(color = Zinc800)
+            // Start prank — primary action
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brush.linearGradient(listOf(Purple600, Pink600)))
+                    .clickable { onStartPrank() }
+                    .padding(vertical = 13.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Стартирай пранка 🎭", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+            // Secondary actions
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Zinc800)
+                        .clickable { onContinueEditing() }
+                        .padding(vertical = 11.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Продължи", color = Zinc200, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Zinc800)
+                        .clickable { onNewPrank() }
+                        .padding(vertical = 11.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Нов пранк", color = Zinc500, fontSize = 13.sp)
+                }
             }
         }
-    }
-}
-
-@Composable
-private fun DraftRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, color = Zinc500, fontSize = 13.sp)
-        Text(
-            text = value,
-            color = Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 12.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.End,
-            overflow = TextOverflow.Ellipsis,
-            maxLines = 2,
-        )
     }
 }
 
@@ -466,20 +547,21 @@ private fun ChatBubble(msg: ChatMessage) {
 // ── History tab ───────────────────────────────────────────────────────────────
 @Composable
 private fun HistoryTab(onNewPrank: () -> Unit) {
-    // No real history endpoint yet – show empty state
+    // Direction: show recap cards of launched/completed pranks.
+    // Backend support (GET /pranks list) not yet available — structured placeholder.
     Column(
         modifier = Modifier.fillMaxSize().background(Zinc950),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("🎭", fontSize = 64.sp)
+        Text("🎭", fontSize = 56.sp)
         Spacer(modifier = Modifier.height(16.dp))
-        Text("Все още нямаш пранкове", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
+        Text("Няма завършени пранкове", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
-            "Създай първия си пранк и тук ще виждаш статуса му в реално време.",
-            color = Zinc500, fontSize = 14.sp,
-            modifier = Modifier.padding(horizontal = 32.dp),
+            "Тук ще се появяват картите на стартираните ти пранкове.",
+            color = Zinc500, fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 36.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
         Spacer(modifier = Modifier.height(24.dp))
