@@ -33,7 +33,7 @@ class SessionViewModel : ViewModel() {
 
             repository.createSession(recipient)
                 .onSuccess { session ->
-                    _events.emit(SessionEvent.CreditsDeducted)
+                    _events.emit(SessionEvent.    CreditsDeducted)
                     _state.value = SessionUiState.Active(session)
                     startPolling(session.id)
                 }

@@ -44,4 +44,20 @@ interface ApiService {
 
     @GET("pranks/{id}")
     suspend fun getSession(@Path("id") id: String): Response<SessionDto>
+
+    // ─── System 1 — Guided prank authoring ───────────────────────────────────
+
+    @POST("authoring/sessions")
+    suspend fun createAuthoringSession(): Response<CreateAuthoringSessionResponse>
+
+    @POST("authoring/sessions/{sessionId}/messages")
+    suspend fun sendAuthoringMessage(
+        @Path("sessionId") sessionId: String,
+        @Body body: SendAuthoringMessageRequest
+    ): Response<SendAuthoringMessageResponse>
+
+    @GET("authoring/sessions/{sessionId}")
+    suspend fun getAuthoringSession(
+        @Path("sessionId") sessionId: String
+    ): Response<GetAuthoringSessionResponse>
 }

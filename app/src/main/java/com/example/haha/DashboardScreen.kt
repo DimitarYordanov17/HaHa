@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,7 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
+import com.example.haha.network.PrankDraftDto
 
 // ── Color tokens ─────────────────────────────────────────────────────────────
 private val Zinc950   = AppColors.Background
@@ -60,8 +58,7 @@ private val TABS = listOf(
     TabItem(Tab.PROFILE, Icons.Default.Person,       "Профил"),
 )
 
-// ── Chat wizard types ─────────────────────────────────────────────────────────
-private enum class ChatStep { RECIPIENT_NAME, SCENARIO, PHONE, CONFIRM, DONE }
+// ── Chat types ────────────────────────────────────────────────────────────────
 
 private enum class MsgRole { ASSISTANT, USER }
 
@@ -69,18 +66,7 @@ private data class ChatMessage(
     val id: Long,
     val role: MsgRole,
     val text: String,
-    val chips: List<String>? = null,
-    val summaryCard: SummaryCard? = null,
 )
-
-private data class SummaryCard(val recipientName: String, val scenario: String, val phone: String)
-
-private val SCENARIOS = listOf("Фалшива доставка", "Банков служител", "Изненада от приятел", "Данъчна служба")
-
-private fun maskPhone(phone: String): String {
-    if (phone.length < 4) return phone
-    return phone.dropLast(4).replace(Regex("\\d"), "*") + phone.takeLast(4)
-}
 
 // ── Root screen ───────────────────────────────────────────────────────────────
 @Composable
@@ -89,8 +75,6 @@ fun DashboardScreen(
     onBridged: () -> Unit,
     viewModel: SessionViewModel = viewModel()
 ) {
-    val sessionState by viewModel.state.collectAsState()
-
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
@@ -114,11 +98,7 @@ fun DashboardScreen(
                 .background(Zinc950)
         ) {
             when (activeTab) {
-                Tab.PRANK   -> PrankBuilderTab(
-                    sessionState = sessionState,
-                    onStartSession = { phone -> viewModel.startSession(phone) },
-                    onReset = { viewModel.reset() }
-                )
+                Tab.PRANK   -> PrankBuilderTab()
                 Tab.HISTORY -> HistoryTab(onNewPrank = { activeTab = Tab.PRANK })
                 Tab.BUY     -> BuyTab(credits = user.credits)
                 Tab.PROFILE -> ProfileTab(user = user, onNavigate = { activeTab = it })
@@ -218,115 +198,24 @@ private fun AppBottomNav(activeTab: Tab, onTabSelected: (Tab) -> Unit) {
     }
 }
 
-// ── Prank Builder tab ─────────────────────────────────────────────────────────
+// ── Prank Builder tab — System 1 guided authoring ─────────────────────────────
 @Composable
 private fun PrankBuilderTab(
-    sessionState: SessionUiState,
-    onStartSession: (String) -> Unit,
-    onReset: () -> Unit,
+    viewModel: AuthoringViewModel = viewModel()
 ) {
-    var step by remember { mutableStateOf(ChatStep.RECIPIENT_NAME) }
-    var recipientName by remember { mutableStateOf("") }
-    var scenario by remember { mutableStateOf("") }
+    val state by viewModel.state.collectAsState()
     var inputText by remember { mutableStateOf("") }
-    var infoOpen by remember { mutableStateOf(false) }
-    val messages = remember {
-        mutableStateListOf(
-            ChatMessage(
-                id = 0L,
-                role = MsgRole.ASSISTANT,
-                text = "Здравей! 👋 Аз съм твоят пранк асистент. Ще ти помогна да създадеш незабравим пранк.\n\nКак се казва човекът, на когото искаш да се пошегуваш?"
-            )
-        )
-    }
-
     val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
 
-    fun addMsg(msg: ChatMessage) {
-        messages.add(msg)
-        scope.launch { listState.animateScrollToItem(messages.lastIndex) }
-    }
-
-    fun handleSend() {
-        val text = inputText.trim()
-        if (text.isBlank()) return
-        inputText = ""
-        addMsg(ChatMessage(id = System.currentTimeMillis(), role = MsgRole.USER, text = text))
-
-        when (step) {
-            ChatStep.RECIPIENT_NAME -> {
-                recipientName = text
-                addMsg(ChatMessage(
-                    id = System.currentTimeMillis() + 1,
-                    role = MsgRole.ASSISTANT,
-                    text = "Страхотно! 😄 Ще пранкнем $text!\n\nИзбери сценарий:",
-                    chips = SCENARIOS
-                ))
-                step = ChatStep.SCENARIO
-            }
-            ChatStep.PHONE -> {
-                val summary = SummaryCard(recipientName, scenario, text)
-                addMsg(ChatMessage(
-                    id = System.currentTimeMillis() + 1,
-                    role = MsgRole.ASSISTANT,
-                    text = "Перфектно! Ето обобщение на пранка:",
-                    summaryCard = summary
-                ))
-                step = ChatStep.CONFIRM
-            }
-            else -> {}
-        }
-    }
-
-    fun handleChipSelect(chip: String) {
-        scenario = chip
-        addMsg(ChatMessage(id = System.currentTimeMillis(), role = MsgRole.USER, text = chip))
-        addMsg(ChatMessage(
-            id = System.currentTimeMillis() + 1,
-            role = MsgRole.ASSISTANT,
-            text = "Чудесен избор! 😈 Сценарият \"$chip\" ще работи перфектно.\n\nВъведи телефонния номер на $recipientName:"
-        ))
-        step = ChatStep.PHONE
-    }
-
-    fun handleStartPrank(summary: SummaryCard) {
-        onStartSession(summary.phone)
-        addMsg(ChatMessage(
-            id = System.currentTimeMillis(),
-            role = MsgRole.ASSISTANT,
-            text = "✅ Обаждането е планирано! Следи статуса в \"История\"."
-        ))
-        step = ChatStep.DONE
-    }
-
-    // Session state feedback messages
-    LaunchedEffect(sessionState) {
-        when (sessionState) {
-            SessionUiState.Completed -> {
-                if (step == ChatStep.DONE) {
-                    messages.add(ChatMessage(
-                        id = System.currentTimeMillis(),
-                        role = MsgRole.ASSISTANT,
-                        text = "🎉 Обаждането завърши успешно!"
-                    ))
-                }
-            }
-            is SessionUiState.Failed -> {
-                if (step == ChatStep.DONE) {
-                    messages.add(ChatMessage(
-                        id = System.currentTimeMillis(),
-                        role = MsgRole.ASSISTANT,
-                        text = "❌ Грешка: ${sessionState.message}"
-                    ))
-                    step = ChatStep.RECIPIENT_NAME
-                }
-            }
-            else -> {}
+    // Scroll to bottom on new message
+    LaunchedEffect(state.messages.size) {
+        if (state.messages.isNotEmpty()) {
+            listState.animateScrollToItem(state.messages.lastIndex)
         }
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Zinc950)) {
+
         // Sub-header
         Row(
             modifier = Modifier
@@ -334,73 +223,91 @@ private fun PrankBuilderTab(
                 .background(Zinc950)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
                 Text("Пранк Асистент", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 Text("AI асистент", color = Zinc500, fontSize = 10.sp)
             }
-            IconButton(onClick = { infoOpen = true }) {
-                Icon(Icons.Default.Info, contentDescription = "Инфо", tint = Zinc500)
-            }
         }
         HorizontalDivider(color = Zinc800.copy(alpha = 0.6f), thickness = 0.5.dp)
 
-        // Session active banner
-        if (sessionState is SessionUiState.Active || sessionState is SessionUiState.Creating) {
+        // Ready banner
+        if (state.isReady) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Purple600.copy(alpha = 0.15f))
+                    .background(Green600.copy(alpha = 0.15f))
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    color = Purple400,
-                    strokeWidth = 2.dp
-                )
+                Text("✅", fontSize = 14.sp)
                 Text(
-                    text = if (sessionState is SessionUiState.Creating) "Свързване..." else "Обаждане в момента...",
-                    color = Purple400,
+                    "Пранкът е готов!",
+                    color = Green400,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
                 )
             }
         }
 
-        // Messages list
+        // Thinking indicator (after session is created, while waiting for reply)
+        if (state.isLoading && state.sessionId != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Purple600.copy(alpha = 0.10f))
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(12.dp), color = Purple400, strokeWidth = 2.dp)
+                Text("Мисля...", color = Purple400, fontSize = 11.sp)
+            }
+        }
+
+        // Messages + draft preview
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
             contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(messages) { msg ->
+            items(state.messages, key = { it.id }) { msg ->
                 ChatBubble(
-                    msg = msg,
-                    currentStep = step,
-                    onChipSelect = { handleChipSelect(it) },
-                    onStartPrank = { handleStartPrank(it) }
+                    msg = ChatMessage(
+                        id = msg.id,
+                        role = if (msg.role == "user") MsgRole.USER else MsgRole.ASSISTANT,
+                        text = msg.text,
+                    )
                 )
+            }
+            val draft = state.draft
+            if (draft != null && (draft.caller != null || draft.targetEffect != null || draft.progression != null)) {
+                item(key = "draft_preview") {
+                    DraftPreviewCard(draft = draft)
+                }
             }
         }
 
-        // Completed / Failed reset
-        if (sessionState == SessionUiState.Completed || sessionState is SessionUiState.Failed) {
+        // Error
+        val errorMsg = state.error
+        if (errorMsg != null) {
+            Text(
+                text = errorMsg,
+                color = Red400,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+
+        // Reset button (visible only when ready)
+        if (state.isReady) {
             Button(
-                onClick = {
-                    onReset()
-                    messages.clear()
-                    messages.add(ChatMessage(
-                        id = 0L,
-                        role = MsgRole.ASSISTANT,
-                        text = "Здравей! 👋 Аз съм твоят пранк асистент. Ще ти помогна да създадеш незабравим пранк.\n\nКак се казва човекът, на когото искаш да се пошегуваш?"
-                    ))
-                    step = ChatStep.RECIPIENT_NAME
-                },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                onClick = { viewModel.reset() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Purple600),
                 shape = RoundedCornerShape(16.dp)
             ) {
@@ -419,9 +326,7 @@ private fun PrankBuilderTab(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val inputDisabled = step == ChatStep.SCENARIO || step == ChatStep.DONE ||
-                    step == ChatStep.CONFIRM ||
-                    sessionState is SessionUiState.Creating || sessionState is SessionUiState.Active
+            val inputDisabled = state.isLoading || state.isReady || state.sessionId == null
 
             TextField(
                 value = inputText,
@@ -429,9 +334,8 @@ private fun PrankBuilderTab(
                 placeholder = {
                     Text(
                         text = when {
-                            step == ChatStep.SCENARIO -> "Избери сценарий по-горе..."
-                            step == ChatStep.DONE || step == ChatStep.CONFIRM -> "Пранкът е стартиран!"
-                            step == ChatStep.PHONE -> "+359 88 ..."
+                            state.isReady -> "Пранкът е готов!"
+                            state.sessionId == null -> "Зареждане..."
                             else -> "Напиши съобщение..."
                         },
                         color = Zinc600, fontSize = 14.sp
@@ -462,168 +366,99 @@ private fun PrankBuilderTab(
                         if (inputText.isNotBlank() && !inputDisabled) Purple600
                         else Purple600.copy(alpha = 0.3f)
                     )
-                    .clickable(enabled = inputText.isNotBlank() && !inputDisabled) { handleSend() },
+                    .clickable(enabled = inputText.isNotBlank() && !inputDisabled) {
+                        val text = inputText.trim()
+                        inputText = ""
+                        viewModel.sendMessage(text)
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.Send, contentDescription = "Изпрати", tint = Color.White, modifier = Modifier.size(18.dp))
             }
         }
     }
+}
 
-    // Info dialog
-    if (infoOpen) {
-        AlertDialog(
-            onDismissRequest = { infoOpen = false },
-            containerColor = Zinc900,
-            title = { Text("Как работи асистентът? 🎭", color = Color.White) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Стъпка по стъпка:", color = Zinc400, fontSize = 14.sp)
-                    listOf(
-                        "1." to "Посочи получателя — кажи ни как се казва.",
-                        "2." to "Избери сценарий — фалшива доставка, банков служител и др.",
-                        "3." to "Въведи телефона — номерът, на който да се обадим.",
-                        "4." to "Потвърди и стартирай — ние правим останалото!",
-                    ).forEach { (n, t) ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(n, color = Purple400, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text(t, color = Zinc400, fontSize = 14.sp)
-                        }
-                    }
-                    Surface(
-                        color = Zinc800,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            "💡 Всеки пранк = 1 токен. Купи повече от таб \"Купи\".",
-                            color = Zinc400, fontSize = 12.sp,
-                            modifier = Modifier.padding(12.dp)
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { infoOpen = false }) {
-                    Text("Затвори", color = Purple400)
-                }
+// ── Draft preview card ────────────────────────────────────────────────────────
+@Composable
+private fun DraftPreviewCard(draft: PrankDraftDto) {
+    Surface(
+        color = Zinc900,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                "ПРАНК ДЕТАЙЛИ",
+                color = Zinc500,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.5.sp
+            )
+            draft.caller?.let { caller ->
+                DraftRow(label = "Персонаж", value = "${caller.persona} · ${caller.tone}")
             }
+            draft.targetEffect?.let { effect ->
+                DraftRow(label = "Ефект", value = effect.intendedEmotion)
+            }
+            draft.progression?.let { prog ->
+                DraftRow(label = "Начало", value = prog.opening)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DraftRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, color = Zinc500, fontSize = 13.sp)
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
         )
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChatBubble(
-    msg: ChatMessage,
-    currentStep: ChatStep,
-    onChipSelect: (String) -> Unit,
-    onStartPrank: (SummaryCard) -> Unit,
-) {
+private fun ChatBubble(msg: ChatMessage) {
     val isUser = msg.role == MsgRole.USER
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        Column(
-            modifier = Modifier.widthIn(max = 300.dp),
-            horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Message bubble
-            Box(
-                modifier = Modifier
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = 18.dp, topEnd = 18.dp,
-                            bottomStart = if (isUser) 18.dp else 4.dp,
-                            bottomEnd = if (isUser) 4.dp else 18.dp
-                        )
+        Box(
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .clip(
+                    RoundedCornerShape(
+                        topStart = 18.dp, topEnd = 18.dp,
+                        bottomStart = if (isUser) 18.dp else 4.dp,
+                        bottomEnd = if (isUser) 4.dp else 18.dp
                     )
-                    .background(if (isUser) Purple600 else Zinc800)
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Text(
-                    text = msg.text,
-                    color = if (isUser) Color.White else Zinc200,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
                 )
-            }
-
-            // Scenario chips
-            if (msg.chips != null && currentStep == ChatStep.SCENARIO) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    msg.chips.forEach { chip ->
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(Zinc800)
-                                .clickable { onChipSelect(chip) }
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Text(chip, color = Zinc200, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                }
-            }
-
-            // Summary card
-            if (msg.summaryCard != null) {
-                Surface(
-                    color = Zinc900,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.width(240.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            "ДЕТАЙЛИ",
-                            color = Zinc500,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.5.sp
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                "Получател" to msg.summaryCard.recipientName,
-                                "Сценарий" to msg.summaryCard.scenario,
-                                "Телефон" to maskPhone(msg.summaryCard.phone),
-                            ).forEach { (label, value) ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(label, color = Zinc500, fontSize = 13.sp)
-                                    Text(value, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                        if (currentStep == ChatStep.CONFIRM) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(
-                                        Brush.linearGradient(listOf(Purple600, Pink600))
-                                    )
-                                    .clickable { onStartPrank(msg.summaryCard) }
-                                    .padding(vertical = 12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "Стартирай пранка 🎭",
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+                .background(if (isUser) Purple600 else Zinc800)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = msg.text,
+                color = if (isUser) Color.White else Zinc200,
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            )
         }
     }
 }
