@@ -29,7 +29,7 @@ class AuthoringStore:
         now = datetime.now(timezone.utc)
         welcome = AuthoringMessage(
             role=MessageRole.ASSISTANT,
-            content="Разкажи ми — какъв пранк искаш да направиш?",
+            content="Разкажи ми — какъв пранк искаш да изиграем?",
             timestamp=now,
         )
         session = AuthoringSession(

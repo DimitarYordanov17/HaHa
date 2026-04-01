@@ -77,7 +77,9 @@ class AuthoringViewModel : ViewModel() {
                         messages = _state.value.messages + assistantMsg,
                         draft = response.draft,
                         status = response.status,
-                        isReady = response.isComplete,
+                        // Once ready, stays ready — backend may flip is_complete during editing
+                        // but the UI must preserve card accessibility until reset() is called.
+                        isReady = _state.value.isReady || response.isComplete,
                         isLoading = false,
                     )
                 }
@@ -101,6 +103,11 @@ class AuthoringViewModel : ViewModel() {
                     _state.value = _state.value.copy(error = e.message ?: "Грешка при запис на номера")
                 }
         }
+    }
+
+    fun clearRecipientPhone() {
+        // Clears local state only — next submitRecipientPhone() will overwrite backend value.
+        _state.value = _state.value.copy(recipientPhone = null)
     }
 
     fun reset() {

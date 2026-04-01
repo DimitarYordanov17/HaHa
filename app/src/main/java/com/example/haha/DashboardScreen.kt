@@ -208,10 +208,15 @@ private fun PrankBuilderTab(
     var inputText by remember { mutableStateOf("") }
     // Local editing mode: lets user keep chatting after prank is ready without resetting session
     var editingMode by remember { mutableStateOf(false) }
+    // Phone input is explicitly triggered by user after prank is ready — not shown automatically
+    var showPhoneInput by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // Reset editing mode when a new session starts
-    LaunchedEffect(state.sessionId) { editingMode = false }
+    // Reset local flow state when a new session starts
+    LaunchedEffect(state.sessionId) {
+        editingMode = false
+        showPhoneInput = false
+    }
 
     // Scroll to bottom on new message or when card appears
     LaunchedEffect(state.messages.size) {
@@ -227,20 +232,8 @@ private fun PrankBuilderTab(
                 .background(Zinc950)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("Асистент", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            if (editingMode) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Zinc800)
-                        .clickable { editingMode = false }
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
-                ) {
-                    Text("← Картата", color = Purple400, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                }
-            }
         }
         HorizontalDivider(color = Zinc800.copy(alpha = 0.6f), thickness = 0.5.dp)
 
@@ -290,11 +283,39 @@ private fun PrankBuilderTab(
 
         HorizontalDivider(color = Zinc800.copy(alpha = 0.6f), thickness = 0.5.dp)
 
-        // Bottom area — switches based on state
+        // Bottom area — staged flow based on state
         val recipientPhone = state.recipientPhone
         when {
-            // Chat is active (authoring in progress, or user is in editing mode)
-            !state.isReady || editingMode -> {
+            // Prank ready + phone collected — show ready card
+            state.isReady && !editingMode && recipientPhone != null -> {
+                PrankReadyCard(
+                    recipientPhone = recipientPhone,
+                    draft = state.draft,
+                    onStartPrank = { onStartPrank(recipientPhone) },
+                    onContinueEditing = { editingMode = true },
+                    onNewPrank = { viewModel.reset() },
+                    onEditPhone = { viewModel.clearRecipientPhone() },
+                )
+            }
+
+            // Prank ready, user explicitly opened phone input
+            state.isReady && !editingMode && showPhoneInput -> {
+                PhoneCollectionBar(
+                    onSubmit = { phone -> viewModel.submitRecipientPhone(phone) }
+                )
+            }
+
+            // Prank ready, phone not yet collected — show CTA to start phone step
+            state.isReady && !editingMode -> {
+                ReadyProceedBanner(onProceed = { showPhoneInput = true })
+            }
+
+            // Chat is active (authoring in progress, or user is in editing mode after ready)
+            else -> {
+                // When editing a ready prank, show a persistent return-to-card banner above input
+                if (editingMode) {
+                    ReturnToCardBanner(onClick = { editingMode = false })
+                }
                 ChatInputBar(
                     inputText = inputText,
                     onInputChange = { inputText = it },
@@ -304,23 +325,6 @@ private fun PrankBuilderTab(
                         inputText = ""
                         viewModel.sendMessage(text)
                     }
-                )
-            }
-
-            // Prank ready — collect recipient phone number
-            recipientPhone == null -> {
-                PhoneCollectionBar(
-                    onSubmit = { phone -> viewModel.submitRecipientPhone(phone) }
-                )
-            }
-
-            // Prank ready + phone collected — show prank card with actions
-            else -> {
-                PrankReadyCard(
-                    recipientPhone = recipientPhone,
-                    onStartPrank = { onStartPrank(recipientPhone) },
-                    onContinueEditing = { editingMode = true },
-                    onNewPrank = { viewModel.reset() },
                 )
             }
         }
@@ -438,13 +442,58 @@ private fun PhoneCollectionBar(onSubmit: (String) -> Unit) {
     }
 }
 
+// ── Ready proceed banner — shown after prank is ready, before phone step ──────
+@Composable
+private fun ReadyProceedBanner(onProceed: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Zinc900)
+            .clickable { onProceed() }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("🎭", fontSize = 16.sp)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Пранкът е готов!", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Добавете номер на получателя →", color = Zinc400, fontSize = 12.sp)
+            }
+        }
+        Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Purple400, modifier = Modifier.size(18.dp))
+    }
+}
+
+// ── Return to card banner — sticky above chat input when editing a ready prank ─
+@Composable
+private fun ReturnToCardBanner(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Purple600.copy(alpha = 0.12f))
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Purple400, modifier = Modifier.size(14.dp))
+        Text("Обратно към пранк картата", color = Purple400, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
 // ── Prank ready card ──────────────────────────────────────────────────────────
 @Composable
 private fun PrankReadyCard(
     recipientPhone: String,
+    draft: com.example.haha.network.PrankDraftDto?,
     onStartPrank: () -> Unit,
     onContinueEditing: () -> Unit,
     onNewPrank: () -> Unit,
+    onEditPhone: () -> Unit,
 ) {
     Surface(
         color = Zinc900,
@@ -463,14 +512,55 @@ private fun PrankReadyCard(
                 Text("🎭", fontSize = 18.sp)
                 Text("Пранкът е готов", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
-            // Recipient
+
+            // Recap — single natural-language summary sentence
+            val recap = run {
+                val persona = draft?.caller?.persona
+                val opening = draft?.progression?.opening?.let { o ->
+                    o.take(80).let { if (o.length > 80) "$it…" else it }
+                }
+                when {
+                    persona != null && opening != null -> "Ще се обади като $persona — $opening"
+                    persona != null -> "Ще се обади като $persona"
+                    opening != null -> opening
+                    else -> null
+                }
+            }
+            if (recap != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Zinc800)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Text(recap, color = Zinc400, fontSize = 12.sp, lineHeight = 17.sp)
+                }
+            }
+
+            // Recipient — with edit button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Получател", color = Zinc500, fontSize = 13.sp)
-                Text(recipientPhone, color = Zinc200, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(recipientPhone, color = Zinc200, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Box(
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Zinc800)
+                            .clickable { onEditPhone() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "Промени номера", tint = Zinc400, modifier = Modifier.size(13.dp))
+                    }
+                }
             }
             HorizontalDivider(color = Zinc800)
             // Start prank — primary action
