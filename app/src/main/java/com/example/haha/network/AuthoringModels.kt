@@ -33,6 +33,7 @@ data class PrankDraftDto(
     val progression: ProgressionDto?,
     val constraints: ConstraintsDto?,
     @SerializedName("context_notes") val contextNotes: String?,
+    @SerializedName("prank_title") val prankTitle: String?,
 )
 
 data class AuthoringMessageDto(

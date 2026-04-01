@@ -195,20 +195,25 @@ def _sanitize_result(result: AuthoringLLMResult, session: AuthoringSession) -> A
 # Draft merge
 # =============================================================================
 
-def _merge_draft(current: PrankDraft, update: DraftUpdate) -> PrankDraft:
+def _merge_draft(current: PrankDraft, update: DraftUpdate, allow_overwrite: bool = False) -> PrankDraft:
     """
     Merge a DraftUpdate into the current PrankDraft.
 
-    Rules:
+    Rules (default, allow_overwrite=False):
     - None update fields are skipped (no field erasure allowed)
     - prank_type: accept only if not already set
     - caller: promote to full Caller only when both persona+tone are present;
-              if caller already exists, fill any absent sub-fields
+              if caller already exists, fill any absent sub-fields only
     - target_effect: promote to full TargetEffect only when intended_emotion present;
-                     if already exists, fill absent sub-fields
-    - progression: promote when opening is present; fill gaps if already exists
+                     if already exists, fill absent sub-fields only
+    - progression: promote when opening is present; fill gaps only if already exists
     - constraints: union avoid_topics; fill other sub-fields only if absent
     - context_notes: append, never replace
+    - prank_title: always overwrite (latest model-assigned title wins)
+
+    When allow_overwrite=True (READY session in editing mode):
+    - caller, target_effect, progression sub-fields are replaced (not just gap-filled)
+    - allows user edits to actually change the draft and reflect on the card
     """
     patches: dict = {}
 
@@ -224,12 +229,13 @@ def _merge_draft(current: PrankDraft, update: DraftUpdate) -> PrankDraft:
                     tone=update.caller.tone,
                 )
         else:
-            # Fill gaps in existing caller
             sub = {}
-            if update.caller.persona is not None and not current.caller.persona:
-                sub["persona"] = update.caller.persona
-            if update.caller.tone is not None and not current.caller.tone:
-                sub["tone"] = update.caller.tone
+            if update.caller.persona is not None:
+                if allow_overwrite or not current.caller.persona:
+                    sub["persona"] = update.caller.persona
+            if update.caller.tone is not None:
+                if allow_overwrite or not current.caller.tone:
+                    sub["tone"] = update.caller.tone
             if sub:
                 patches["caller"] = current.caller.copy(update=sub)
 
@@ -242,14 +248,13 @@ def _merge_draft(current: PrankDraft, update: DraftUpdate) -> PrankDraft:
                     duration_seconds=update.target_effect.duration_seconds,
                 )
         else:
-            # Fill gaps in existing target_effect
             sub = {}
-            if (update.target_effect.intended_emotion is not None
-                    and not current.target_effect.intended_emotion):
-                sub["intended_emotion"] = update.target_effect.intended_emotion
-            if (update.target_effect.duration_seconds is not None
-                    and current.target_effect.duration_seconds is None):
-                sub["duration_seconds"] = update.target_effect.duration_seconds
+            if update.target_effect.intended_emotion is not None:
+                if allow_overwrite or not current.target_effect.intended_emotion:
+                    sub["intended_emotion"] = update.target_effect.intended_emotion
+            if update.target_effect.duration_seconds is not None:
+                if allow_overwrite or current.target_effect.duration_seconds is None:
+                    sub["duration_seconds"] = update.target_effect.duration_seconds
             if sub:
                 patches["target_effect"] = current.target_effect.copy(update=sub)
 
@@ -262,11 +267,16 @@ def _merge_draft(current: PrankDraft, update: DraftUpdate) -> PrankDraft:
                     resolution=update.progression.resolution,
                 )
         else:
-            sub = {
-                k: v
-                for k, v in update.progression.dict(exclude_none=True).items()
-                if getattr(current.progression, k) is None
-            }
+            if allow_overwrite:
+                # Replace any sub-field the model provides
+                sub = {k: v for k, v in update.progression.dict(exclude_none=True).items()}
+            else:
+                # Fill gaps only
+                sub = {
+                    k: v
+                    for k, v in update.progression.dict(exclude_none=True).items()
+                    if getattr(current.progression, k) is None
+                }
             if sub:
                 patches["progression"] = current.progression.copy(update=sub)
 
@@ -300,12 +310,19 @@ def _merge_draft(current: PrankDraft, update: DraftUpdate) -> PrankDraft:
                 else update.context_notes
             )
 
+    # prank_title: always overwrite — latest model-assigned title wins
+    if update.prank_title is not None:
+        patches["prank_title"] = update.prank_title
+
     return current.copy(update=patches) if patches else current
 
 
 # =============================================================================
 # Status determination — backend-authoritative
 # =============================================================================
+
+_MIN_USER_TURNS_BEFORE_READY = 2  # must have ≥2 user turns before prank can be marked ready
+
 
 def _determine_status(
     merged_draft: PrankDraft,
@@ -315,6 +332,10 @@ def _determine_status(
     """
     Determine next status and completion flag.
     Backend rules are authoritative; model output is advisory.
+
+    Product rule: a prank cannot become READY after only the first user message.
+    The user must have sent at least _MIN_USER_TURNS_BEFORE_READY messages so
+    there is at least one assistant shaping reply and one user response to it.
     """
     if session.status == AuthoringStatus.READY:
         return AuthoringStatus.READY, True  # terminal — never regress
@@ -322,6 +343,14 @@ def _determine_status(
     draft_complete = _is_draft_complete(merged_draft)
 
     if result.ready_for_handoff and draft_complete:
+        user_turns = sum(1 for m in session.messages if m.role == MessageRole.USER)
+        if user_turns < _MIN_USER_TURNS_BEFORE_READY:
+            logger.info(
+                "session=%s: ready_for_handoff=True suppressed — only %d user turn(s), "
+                "need at least %d",
+                session.id, user_turns, _MIN_USER_TURNS_BEFORE_READY,
+            )
+            return AuthoringStatus.COLLECTING_INFO, False
         return AuthoringStatus.READY, True
 
     if draft_complete:
@@ -370,7 +399,10 @@ def process_turn(store: AuthoringStore, session_id: str, user_content: str) -> s
     result = _sanitize_result(raw_result, session)
 
     # Phase 5 — merge draft
-    new_draft = _merge_draft(session.draft, result.draft_update)
+    # When the session is already READY (user is editing), allow the model to
+    # overwrite already-set fields so the card reflects the actual edited state.
+    editing = session.status == AuthoringStatus.READY
+    new_draft = _merge_draft(session.draft, result.draft_update, allow_overwrite=editing)
 
     # Phase 6 — determine status
     new_status, is_complete = _determine_status(new_draft, result, session)

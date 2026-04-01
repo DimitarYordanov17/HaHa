@@ -513,20 +513,11 @@ private fun PrankReadyCard(
                 Text("Пранкът е готов", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
 
-            // Recap — single natural-language summary sentence
-            val recap = run {
-                val persona = draft?.caller?.persona
-                val opening = draft?.progression?.opening?.let { o ->
-                    o.take(80).let { if (o.length > 80) "$it…" else it }
-                }
-                when {
-                    persona != null && opening != null -> "Ще се обади като $persona — $opening"
-                    persona != null -> "Ще се обади като $persona"
-                    opening != null -> opening
-                    else -> null
-                }
-            }
-            if (recap != null) {
+            // Summary — short product-style title derived from prank_title (model-generated)
+            // or falling back to caller.persona when the title is not yet set.
+            val summary = draft?.prankTitle
+                ?: draft?.caller?.persona?.replaceFirstChar { it.uppercaseChar() }
+            if (summary != null) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -534,7 +525,7 @@ private fun PrankReadyCard(
                         .background(Zinc800)
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
-                    Text(recap, color = Zinc400, fontSize = 12.sp, lineHeight = 17.sp)
+                    Text(summary, color = Zinc200, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
             }
 

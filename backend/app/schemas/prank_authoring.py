@@ -43,6 +43,7 @@ class PrankDraft(BaseModel):
     progression: Optional[Progression] = None
     constraints: Optional[Constraints] = None
     context_notes: Optional[str] = None  # free-form notes from user turns
+    prank_title: Optional[str] = None    # short product-style label, e.g. "Обурканият куриер"
 
 
 class PrankPackage(BaseModel):
@@ -107,6 +108,7 @@ class DraftUpdate(BaseModel):
     progression: Optional[ProgressionUpdate] = None
     constraints: Optional[ConstraintsUpdate] = None
     context_notes: Optional[str] = None
+    prank_title: Optional[str] = None   # short product-style label set by model when ready
 
 
 class AuthoringLLMResult(BaseModel):

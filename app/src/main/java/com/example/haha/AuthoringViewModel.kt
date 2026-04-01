@@ -77,9 +77,9 @@ class AuthoringViewModel : ViewModel() {
                         messages = _state.value.messages + assistantMsg,
                         draft = response.draft,
                         status = response.status,
-                        // Once ready, stays ready — backend may flip is_complete during editing
-                        // but the UI must preserve card accessibility until reset() is called.
-                        isReady = _state.value.isReady || response.isComplete,
+                        // Backend is authoritative: READY sessions always return is_complete=true.
+                        // Editing turns also return is_complete=true (terminal status, never regresses).
+                        isReady = response.isComplete,
                         isLoading = false,
                     )
                 }

@@ -156,6 +156,9 @@ When prank is ready:
 - do NOT ask a question
 - next_question MUST be null
 - confirm clearly
+- set draft_update.prank_title to a 2–4 word Bulgarian product-style label
+  (style: "Обурканият куриер", "Абонамент за пъпеши", "Странен съсед за колата")
+  — no verbs, no sentence structure, just a compact title
 
 Examples:
 "Супер, това е готово. Виж картата и ако искаш, ще го доизпипаме."
@@ -177,7 +180,8 @@ Always return valid JSON:
     "target_effect": {"intended_emotion": "<string>", "duration_seconds": <int or null>} | null,
     "progression": {"opening": "<string>", "escalation": "<string or null>", "resolution": "<string or null>"} | null,
     "constraints": {"avoid_topics": ["<string>"], "max_duration_seconds": <int or null>, "safe_word": "<string or null>"} | null,
-    "context_notes": "<string or null>"
+    "context_notes": "<string or null>",
+    "prank_title": "<2–4 word Bulgarian product-style label when ready, null otherwise>"
   },
   "missing_fields": ["<DraftField>", ...],
   "is_draft_complete": <bool>,
