@@ -10,6 +10,24 @@ import com.example.haha.network.SetRecipientPhoneRequest
 
 class AuthoringRepository {
 
+    /**
+     * Fetch the user's latest non-launched (active) authoring session.
+     * Returns success(session) if one exists, success(null) on 404 (no active session),
+     * or failure on a real network/server error.
+     */
+    suspend fun getActiveSession(): Result<AuthoringSessionDto?> {
+        return try {
+            val response = RetrofitClient.api.getActiveAuthoringSession()
+            when {
+                response.isSuccessful -> Result.success(response.body()!!.session)
+                response.code() == 404 -> Result.success(null)
+                else -> Result.failure(Exception("HTTP ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun createSession(): Result<AuthoringSessionDto> {
         return try {
             val response = RetrofitClient.api.createAuthoringSession()

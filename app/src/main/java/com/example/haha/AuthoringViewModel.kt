@@ -2,6 +2,7 @@ package com.example.haha
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.haha.network.AuthoringSessionDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -14,33 +15,27 @@ class AuthoringViewModel : ViewModel() {
     val state: StateFlow<AuthoringUiState> = _state
 
     init {
-        createSession()
+        resumeOrCreate()
     }
 
-    private fun createSession() {
+    /**
+     * On startup: try to resume the latest active (non-launched) session.
+     * Only creates a new session if none exists.  This prevents junk drafts
+     * from accumulating every time the app is reopened.
+     */
+    private fun resumeOrCreate() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
 
+            val activeSession = repository.getActiveSession().getOrNull()
+            if (activeSession != null) {
+                applySession(activeSession)
+                return@launch
+            }
+
+            // No active session — create a new one
             repository.createSession()
-                .onSuccess { session ->
-                    // Backend owns the welcome message — read from session.messages.
-                    val messages = session.messages.mapIndexed { idx, msg ->
-                        AuthoringChatMsg(
-                            id = idx.toLong(),
-                            role = msg.role,
-                            text = msg.content,
-                        )
-                    }
-                    _state.value = _state.value.copy(
-                        sessionId = session.id,
-                        messages = messages,
-                        draft = session.draft,
-                        status = session.status,
-                        isReady = session.isComplete,
-                        recipientPhone = session.recipientPhone,
-                        isLoading = false,
-                    )
-                }
+                .onSuccess { session -> applySession(session) }
                 .onFailure { e ->
                     _state.value = _state.value.copy(
                         isLoading = false,
@@ -48,6 +43,26 @@ class AuthoringViewModel : ViewModel() {
                     )
                 }
         }
+    }
+
+    /** Apply a session DTO to UI state (shared by resume and create paths). */
+    private fun applySession(session: AuthoringSessionDto) {
+        val messages = session.messages.mapIndexed { idx, msg ->
+            AuthoringChatMsg(
+                id = idx.toLong(),
+                role = msg.role,
+                text = msg.content,
+            )
+        }
+        _state.value = _state.value.copy(
+            sessionId = session.id,
+            messages = messages,
+            draft = session.draft,
+            status = session.status,
+            isReady = session.isComplete,
+            recipientPhone = session.recipientPhone,
+            isLoading = false,
+        )
     }
 
     fun sendMessage(content: String) {
@@ -136,8 +151,22 @@ class AuthoringViewModel : ViewModel() {
         onStartPrank(phone)
     }
 
+    /**
+     * Explicitly start a brand-new session.  Called only when the user taps
+     * "Нов пранк" — bypasses resume logic so a fresh session is always created.
+     */
     fun reset() {
         _state.value = AuthoringUiState()
-        createSession()
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, error = null)
+            repository.createSession()
+                .onSuccess { session -> applySession(session) }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = e.message ?: "Не може да се стартира сесија",
+                    )
+                }
+        }
     }
 }

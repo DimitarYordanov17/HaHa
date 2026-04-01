@@ -279,7 +279,9 @@ private fun PrankBuilderTab(
         val errorMsg = state.error
         if (errorMsg != null) {
             Text(
-                text = errorMsg,
+                text =
+
+                    errorMsg,
                 color = Red400,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)

@@ -72,6 +72,10 @@ interface ApiService {
     @GET("authoring/sessions")
     suspend fun listAuthoringSessions(): Response<ListAuthoringSessionsResponse>
 
+    // Return the latest non-launched session, or 404 if none exists
+    @GET("authoring/sessions/active")
+    suspend fun getActiveAuthoringSession(): Response<GetAuthoringSessionResponse>
+
     // Record that the user launched a prank from an authoring session
     @POST("authoring/sessions/{sessionId}/launch")
     suspend fun launchAuthoringSession(

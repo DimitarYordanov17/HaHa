@@ -264,8 +264,21 @@ async def list_authoring_sessions(
         )
     ).all()
 
+    def _has_user_messages(messages_json: str) -> bool:
+        """Return True if the session has at least one user message."""
+        try:
+            msgs = json.loads(messages_json or "[]")
+            return any(m.get("role") == "user" for m in msgs)
+        except Exception:
+            return True  # keep on parse failure — safer than hiding real sessions
+
     summaries: list[AuthoringDraftSummary] = []
     for row in rows:
+        # Skip empty junk sessions — no user input means no meaningful content.
+        # These are created automatically on app open and abandoned immediately.
+        if not _has_user_messages(row.messages_json or "[]"):
+            continue
+
         try:
             draft = PrankDraft.parse_raw(row.draft_json)
         except Exception:
@@ -297,6 +310,46 @@ async def list_authoring_sessions(
         current_user.id, len(summaries),
     )
     return ListSessionsResponse(sessions=summaries)
+
+
+@router.get("/sessions/active", response_model=GetSessionResponse)
+async def get_active_authoring_session(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return the user's latest unfinished (not yet launched) authoring session.
+
+    Called by the Android app on startup — if an active session exists the app
+    resumes it instead of creating a new one.  Returns 404 when no active
+    session exists so the caller knows to create a fresh one.
+
+    'Active' means: launched_at IS NULL.  All statuses (COLLECTING_INFO,
+    DRAFTING, READY) are resumable as long as the session has not been launched.
+    """
+    db_row = await db.scalar(
+        select(AuthoringDraft)
+        .where(
+            AuthoringDraft.user_id == current_user.id,
+            AuthoringDraft.launched_at.is_(None),
+        )
+        .order_by(desc(AuthoringDraft.created_at))
+        .limit(1)
+    )
+    if db_row is None:
+        raise HTTPException(status_code=404, detail="No active authoring session")
+
+    session = authoring_store.get_session(str(db_row.id))
+    if session is None:
+        session = await _load_from_db(str(db_row.id), current_user.id, db)
+    if session is None:
+        raise HTTPException(status_code=404, detail="No active authoring session")
+
+    logger.info(
+        "authoring.get_active: user=%s session=%s status=%s",
+        current_user.id, session.id, session.status,
+    )
+    return GetSessionResponse(session=session)
 
 
 @router.get("/sessions/{session_id}", response_model=GetSessionResponse)
