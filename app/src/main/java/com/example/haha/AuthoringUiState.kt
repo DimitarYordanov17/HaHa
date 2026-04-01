@@ -18,4 +18,7 @@ data class AuthoringUiState(
     val recipientPhone: String? = null,
     val isLoading: Boolean = false,
     val error: String? = null,
+    // Set to true after the user taps "Стартирай пранка" — prevents double-launch
+    // and transitions the card to a sent confirmation state.
+    val isLaunched: Boolean = false,
 )

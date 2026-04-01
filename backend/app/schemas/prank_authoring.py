@@ -194,3 +194,34 @@ class SendMessageResponse(BaseModel):
 
 class SetPhoneRequest(BaseModel):
     phone: str
+
+
+# ---------- history / summary models ----------
+
+class AuthoringDraftSummary(BaseModel):
+    """
+    Lightweight read model for the history list.
+    Returned by GET /authoring/sessions — one row per authoring session,
+    fields extracted from the full draft so the client can render a card
+    without deserialising the full session.
+    """
+    id: str
+    status: AuthoringStatus
+    is_complete: bool
+    prank_title: Optional[str]
+    recipient_phone: Optional[str]
+    launched_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+    # Extracted from PrankDraft for cheap rendering — null when not yet set
+    caller_persona: Optional[str] = None
+    opening: Optional[str] = None        # first 80 chars of progression.opening
+
+
+class ListSessionsResponse(BaseModel):
+    sessions: list[AuthoringDraftSummary]
+
+
+class LaunchSessionResponse(BaseModel):
+    launched: bool
+    launched_at: Optional[datetime]

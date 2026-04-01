@@ -110,6 +110,32 @@ class AuthoringViewModel : ViewModel() {
         _state.value = _state.value.copy(recipientPhone = null)
     }
 
+    /**
+     * Record the prank launch in the backend (audit trail) and trigger the
+     * actual call via [onStartPrank].  Guard: does nothing if already launched.
+     *
+     * The backend call is best-effort — failure logs but does not block the
+     * actual prank so the user experience is unaffected by a transient error.
+     */
+    fun launchPrank(onStartPrank: (String) -> Unit) {
+        if (_state.value.isLaunched) return  // hard guard — prevent double-launch
+        val sessionId = _state.value.sessionId ?: return
+        val phone = _state.value.recipientPhone ?: return
+
+        // Flip launched immediately (optimistic) so the button is disabled
+        // before the coroutine starts.
+        _state.value = _state.value.copy(isLaunched = true)
+
+        viewModelScope.launch {
+            // Record in backend — best-effort, never blocks the call
+            repository.launchSession(sessionId)
+                .onFailure { /* audit failure is non-fatal */ }
+        }
+
+        // Fire the actual System 2 call
+        onStartPrank(phone)
+    }
+
     fun reset() {
         _state.value = AuthoringUiState()
         createSession()

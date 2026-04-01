@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -99,7 +101,10 @@ fun DashboardScreen(
                 Tab.PRANK   -> PrankBuilderTab(
                     onStartPrank = { phone -> viewModel.startSession(phone) }
                 )
-                Tab.HISTORY -> HistoryTab(onNewPrank = { activeTab = Tab.PRANK })
+                Tab.HISTORY -> HistoryTab(
+                    onNewPrank = { activeTab = Tab.PRANK },
+                    onRefresh = {},
+                )
                 Tab.BUY     -> BuyTab(credits = user.credits)
                 Tab.PROFILE -> ProfileTab(user = user, onNavigate = { activeTab = it })
             }
@@ -286,12 +291,13 @@ private fun PrankBuilderTab(
         // Bottom area — staged flow based on state
         val recipientPhone = state.recipientPhone
         when {
-            // Prank ready + phone collected — show ready card
+            // Prank ready + phone collected — show ready card (or launched confirmation)
             state.isReady && !editingMode && recipientPhone != null -> {
                 PrankReadyCard(
                     recipientPhone = recipientPhone,
                     draft = state.draft,
-                    onStartPrank = { onStartPrank(recipientPhone) },
+                    isLaunched = state.isLaunched,
+                    onStartPrank = { viewModel.launchPrank(onStartPrank) },
                     onContinueEditing = { editingMode = true },
                     onNewPrank = { viewModel.reset() },
                     onEditPhone = { viewModel.clearRecipientPhone() },
@@ -490,6 +496,7 @@ private fun ReturnToCardBanner(onClick: () -> Unit) {
 private fun PrankReadyCard(
     recipientPhone: String,
     draft: com.example.haha.network.PrankDraftDto?,
+    isLaunched: Boolean,
     onStartPrank: () -> Unit,
     onContinueEditing: () -> Unit,
     onNewPrank: () -> Unit,
@@ -504,13 +511,18 @@ private fun PrankReadyCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Header
+            // Header — changes after launch
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("🎭", fontSize = 18.sp)
-                Text("Пранкът е готов", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(if (isLaunched) "✅" else "🎭", fontSize = 18.sp)
+                Text(
+                    text = if (isLaunched) "Пранкът е изпратен!" else "Пранкът е готов",
+                    color = if (isLaunched) Green400 else Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                )
             }
 
             // Summary — short product-style title derived from prank_title (model-generated)
@@ -529,7 +541,7 @@ private fun PrankReadyCard(
                 }
             }
 
-            // Recipient — with edit button
+            // Recipient — edit disabled after launch to prevent confusion
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -541,54 +553,71 @@ private fun PrankReadyCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(recipientPhone, color = Zinc200, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Box(
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Zinc800)
-                            .clickable { onEditPhone() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = "Промени номера", tint = Zinc400, modifier = Modifier.size(13.dp))
+                    if (!isLaunched) {
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Zinc800)
+                                .clickable { onEditPhone() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Промени номера", tint = Zinc400, modifier = Modifier.size(13.dp))
+                        }
                     }
                 }
             }
             HorizontalDivider(color = Zinc800)
-            // Start prank — primary action
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Brush.linearGradient(listOf(Purple600, Pink600)))
-                    .clickable { onStartPrank() }
-                    .padding(vertical = 13.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Стартирай пранка 🎭", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            }
-            // Secondary actions
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+            if (isLaunched) {
+                // ── Post-launch state: "Нов пранк" only ──────────────────────
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Zinc800)
-                        .clickable { onContinueEditing() }
-                        .padding(vertical = 11.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Продължи", color = Zinc200, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(Zinc800)
                         .clickable { onNewPrank() }
-                        .padding(vertical = 11.dp),
+                        .padding(vertical = 13.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Нов пранк", color = Zinc500, fontSize = 13.sp)
+                    Text("Нов пранк", color = Zinc200, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                }
+            } else {
+                // ── Pre-launch state: primary + secondary actions ─────────────
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Brush.linearGradient(listOf(Purple600, Pink600)))
+                        .clickable { onStartPrank() }
+                        .padding(vertical = 13.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Стартирай пранка 🎭", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Zinc800)
+                            .clickable { onContinueEditing() }
+                            .padding(vertical = 11.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Продължи", color = Zinc200, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Zinc800)
+                            .clickable { onNewPrank() }
+                            .padding(vertical = 11.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Нов пранк", color = Zinc500, fontSize = 13.sp)
+                    }
                 }
             }
         }
@@ -627,36 +656,174 @@ private fun ChatBubble(msg: ChatMessage) {
 
 // ── History tab ───────────────────────────────────────────────────────────────
 @Composable
-private fun HistoryTab(onNewPrank: () -> Unit) {
-    // Direction: show recap cards of launched/completed pranks.
-    // Backend support (GET /pranks list) not yet available — structured placeholder.
-    Column(
-        modifier = Modifier.fillMaxSize().background(Zinc950),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+private fun HistoryTab(
+    onNewPrank: () -> Unit,
+    onRefresh: () -> Unit,
+    viewModel: HistoryViewModel = viewModel(),
+) {
+    val state by viewModel.state.collectAsState()
+
+    // Refresh the list every time this tab is navigated to
+    LaunchedEffect(Unit) {
+        viewModel.loadHistory()
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(Zinc950)) {
+        when {
+            state.isLoading -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Purple400, strokeWidth = 2.dp)
+                }
+            }
+
+            state.sessions.isEmpty() && state.error == null -> {
+                // Empty state
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("🎭", fontSize = 56.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        "Няма завършени пранкове",
+                        color = Color.White,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Тук ще се появяват картите на стартираните ти пранкове.",
+                        color = Zinc500,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 36.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Purple600)
+                            .clickable { onNewPrank() }
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Text("Нов пранк", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(state.sessions, key = { it.id }) { session ->
+                        PrankHistoryCard(session = session)
+                    }
+                }
+            }
+        }
+
+        // Error banner (non-blocking)
+        val errorMsg = state.error
+        if (errorMsg != null && !state.isLoading) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Zinc900)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Text(errorMsg, color = Red400, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+// ── Prank history card ────────────────────────────────────────────────────────
+@Composable
+private fun PrankHistoryCard(session: com.example.haha.network.AuthoringDraftSummaryDto) {
+    Surface(
+        color = Zinc900,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Text("🎭", fontSize = 56.sp)
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Няма завършени пранкове", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            "Тук ще се появяват картите на стартираните ти пранкове.",
-            color = Zinc500, fontSize = 13.sp,
-            modifier = Modifier.padding(horizontal = 36.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Purple600)
-                .clickable { onNewPrank() }
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-            Text("Нов пранк", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            // Title row + status badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val title = session.prankTitle
+                    ?: session.callerPersona?.replaceFirstChar { it.uppercaseChar() }
+                    ?: "Непълен пранк"
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                val (badgeLabel, badgeColor) = when {
+                    session.launchedAt != null -> "Изпратен" to Green400
+                    session.isComplete        -> "Готов"    to Purple400
+                    else                      -> "Чернова"  to Zinc500
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(badgeColor.copy(alpha = 0.15f))
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                ) {
+                    Text(
+                        text = badgeLabel,
+                        color = badgeColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+
+            // Opening premise excerpt
+            if (session.opening != null) {
+                Text(
+                    text = session.opening,
+                    color = Zinc400,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            // Recipient + date row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (session.recipientPhone != null) {
+                    Text("📞 ${session.recipientPhone}", color = Zinc500, fontSize = 11.sp)
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                // Show date portion of ISO timestamp ("2026-04-01")
+                Text(
+                    text = session.createdAt.take(10),
+                    color = Zinc600,
+                    fontSize = 11.sp,
+                )
+            }
         }
     }
 }

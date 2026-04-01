@@ -1,6 +1,8 @@
 package com.example.haha
 
+import com.example.haha.network.AuthoringDraftSummaryDto
 import com.example.haha.network.AuthoringSessionDto
+import com.example.haha.network.LaunchAuthoringSessionResponse
 import com.example.haha.network.RetrofitClient
 import com.example.haha.network.SendAuthoringMessageRequest
 import com.example.haha.network.SendAuthoringMessageResponse
@@ -45,6 +47,40 @@ class AuthoringRepository {
             )
             if (response.isSuccessful) {
                 Result.success(Unit)
+            } else {
+                Result.failure(Exception("HTTP ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch the user's authoring session history (newest first, max 50).
+     * Used to populate the HistoryTab.
+     */
+    suspend fun listSessions(): Result<List<AuthoringDraftSummaryDto>> {
+        return try {
+            val response = RetrofitClient.api.listAuthoringSessions()
+            if (response.isSuccessful) {
+                Result.success(response.body()!!.sessions)
+            } else {
+                Result.failure(Exception("HTTP ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Record that the user launched the prank from this authoring session.
+     * Best-effort — failure does not block the actual prank call.
+     */
+    suspend fun launchSession(sessionId: String): Result<LaunchAuthoringSessionResponse> {
+        return try {
+            val response = RetrofitClient.api.launchAuthoringSession(sessionId = sessionId)
+            if (response.isSuccessful) {
+                Result.success(response.body()!!)
             } else {
                 Result.failure(Exception("HTTP ${response.code()}"))
             }

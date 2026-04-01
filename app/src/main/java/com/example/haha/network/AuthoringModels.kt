@@ -81,3 +81,34 @@ data class SendAuthoringMessageResponse(
 data class GetAuthoringSessionResponse(
     val session: AuthoringSessionDto,
 )
+
+// ─── History / summary ───────────────────────────────────────────────────────
+
+/**
+ * Lightweight summary of one authoring session — used to render HistoryTab cards.
+ * Returned by GET /authoring/sessions (list endpoint).
+ */
+data class AuthoringDraftSummaryDto(
+    val id: String,
+    val status: String,
+    @SerializedName("is_complete") val isComplete: Boolean,
+    @SerializedName("prank_title") val prankTitle: String?,
+    @SerializedName("recipient_phone") val recipientPhone: String?,
+    @SerializedName("launched_at") val launchedAt: String?,
+    @SerializedName("created_at") val createdAt: String,
+    @SerializedName("updated_at") val updatedAt: String,
+    // Extracted fields for cheap card rendering — null when not yet authored
+    @SerializedName("caller_persona") val callerPersona: String?,
+    val opening: String?,
+)
+
+data class ListAuthoringSessionsResponse(
+    val sessions: List<AuthoringDraftSummaryDto>,
+)
+
+// ─── Launch ──────────────────────────────────────────────────────────────────
+
+data class LaunchAuthoringSessionResponse(
+    val launched: Boolean,
+    @SerializedName("launched_at") val launchedAt: String?,
+)

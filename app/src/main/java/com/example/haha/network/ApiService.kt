@@ -67,4 +67,14 @@ interface ApiService {
         @Path("sessionId") sessionId: String,
         @Body body: SetRecipientPhoneRequest
     ): Response<Unit>
+
+    // List all authoring sessions for the current user (history)
+    @GET("authoring/sessions")
+    suspend fun listAuthoringSessions(): Response<ListAuthoringSessionsResponse>
+
+    // Record that the user launched a prank from an authoring session
+    @POST("authoring/sessions/{sessionId}/launch")
+    suspend fun launchAuthoringSession(
+        @Path("sessionId") sessionId: String
+    ): Response<LaunchAuthoringSessionResponse>
 }
