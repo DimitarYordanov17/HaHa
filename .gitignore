@@ -13,6 +13,13 @@
 .externalNativeBuild
 .cxx
 local.properties
+backend/.env
+backend/.env.example
+
+audio_lib/ngrok-auth.txt
+.chatgpt-context/
+claude/
+ui-bakery/
 
 __pycache__/
 *.pyc
