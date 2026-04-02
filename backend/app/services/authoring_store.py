@@ -1,4 +1,5 @@
 import uuid
+import random
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -12,6 +13,14 @@ from app.schemas.prank_authoring import (
 )
 
 logger = logging.getLogger(__name__)
+
+_WELCOME_MESSAGES = [
+    "Как искаш да се забавляваме днес? На кого да звъннем?",
+    "Какъв майтап ти се върти в главата?",
+    "Здравей, дай начална идея за майташ и ще я сглобим.",
+    "Здравей, кажи ми сценарий на обаждане и ще го направим смешен.",
+    "Готов ли си за забава?",
+]
 
 
 class AuthoringStore:
@@ -29,7 +38,7 @@ class AuthoringStore:
         now = datetime.now(timezone.utc)
         welcome = AuthoringMessage(
             role=MessageRole.ASSISTANT,
-            content="Разкажи ми — какъв пранк искаш да изиграем?",
+            content=random.choice(_WELCOME_MESSAGES),
             timestamp=now,
         )
         session = AuthoringSession(
