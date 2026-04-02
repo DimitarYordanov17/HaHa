@@ -17,6 +17,14 @@ class AuthInterceptor(context: Context) : Interceptor {
         } else {
             chain.request()
         }
-        return chain.proceed(request)
+        val response = chain.proceed(request)
+        if (response.code == 401) {
+            // Token is expired or invalid. Clear it immediately so subsequent
+            // requests don't keep attaching a dead token, then signal the
+            // AuthViewModel so the app can transition to the login screen.
+            prefs.edit().remove("access_token").apply()
+            AuthEventBus.notifyExpired()
+        }
+        return response
     }
 }

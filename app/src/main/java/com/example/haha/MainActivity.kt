@@ -32,7 +32,8 @@ class MainActivity : ComponentActivity() {
                     ) {
                         CircularProgressIndicator(color = AppColors.AccentLight)
                     }
-                    AuthState.Unauthenticated -> LoginScreen(
+                    is AuthState.Unauthenticated -> LoginScreen(
+                        sessionExpired = state.sessionExpired,
                         onLoginSuccess = { authViewModel.refreshAuth() }
                     )
                     is AuthState.Authenticated -> DashboardScreen(

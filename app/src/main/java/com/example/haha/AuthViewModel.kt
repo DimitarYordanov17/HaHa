@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.haha.network.AuthEventBus
 import com.example.haha.network.MeResponse
 import com.example.haha.network.RetrofitClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,17 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     init {
         // Boot-time check: clear token on 401 or network failure (device offline at startup)
         checkAuth(clearTokenOnNetworkError = true)
+
+        // Mid-session expiry: any protected endpoint returning 401 emits here via AuthInterceptor.
+        // Guard: only handle this when we're Authenticated — boot-time 401s are handled by
+        // checkAuth above and would show the session-expired banner incorrectly if not guarded.
+        viewModelScope.launch {
+            AuthEventBus.expired.collect {
+                if (_state.value is AuthState.Authenticated) {
+                    _state.value = AuthState.Unauthenticated(sessionExpired = true)
+                }
+            }
+        }
     }
 
     // Called post-login. Token was just saved — only a 401 means it's invalid.
@@ -39,6 +51,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 if (response.isSuccessful) {
                     _state.value = AuthState.Authenticated(response.body()!!.toUser())
                 }
+                // 401 here is handled by AuthInterceptor → AuthEventBus → the collector above
             } catch (_: Exception) {
                 // transient error — keep current state
             }
@@ -48,7 +61,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private fun checkAuth(clearTokenOnNetworkError: Boolean) {
         val token = prefs.getString("access_token", null)
         if (token == null) {
-            _state.value = AuthState.Unauthenticated
+            _state.value = AuthState.Unauthenticated()
             return
         }
 
@@ -60,12 +73,13 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                         _state.value = AuthState.Authenticated(response.body()!!.toUser())
                     }
                     response.code() == 401 -> {
-                        prefs.edit().remove("access_token").apply()
-                        _state.value = AuthState.Unauthenticated
+                        // Token stored but rejected by server. AuthInterceptor already cleared
+                        // the token from prefs. Show normal login (no session-expired banner).
+                        _state.value = AuthState.Unauthenticated()
                     }
                     else -> {
                         // Non-401 HTTP error (5xx, etc.) — server problem, not an invalid token
-                        _state.value = AuthState.Unauthenticated
+                        _state.value = AuthState.Unauthenticated()
                     }
                 }
             } catch (e: Exception) {
@@ -73,7 +87,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 if (clearTokenOnNetworkError) {
                     prefs.edit().remove("access_token").apply()
                 }
-                _state.value = AuthState.Unauthenticated
+                _state.value = AuthState.Unauthenticated()
             }
         }
     }

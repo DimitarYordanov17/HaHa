@@ -37,6 +37,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
+    sessionExpired: Boolean = false,
     viewModel: LoginViewModel = viewModel()
 ) {
     val email by viewModel.email.collectAsState()
@@ -84,6 +85,24 @@ fun LoginScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text("Влез в акаунта си", color = AppColors.TextMuted, fontSize = 14.sp)
+
+        if (sessionExpired) {
+            Spacer(modifier = Modifier.height(20.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF3F1515))
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = "Сесията ти изтече. Влез отново.",
+                    color = Color(0xFFF87171),
+                    fontSize = 13.sp,
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(40.dp))
 
         TextField(
