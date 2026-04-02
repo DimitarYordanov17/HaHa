@@ -643,7 +643,7 @@ private fun PrankReadyCard(
                             .padding(vertical = 11.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("Нов пранк", color = Zinc500, fontSize = 13.sp)
+                        Text("Нов пранк", color = Zinc200, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
