@@ -398,9 +398,17 @@ private fun ChatInputBar(
 }
 
 // ── Phone collection bar ──────────────────────────────────────────────────────
+// Accepted format: +359XXXXXXXXX only. Local 0XXXXXXXXX is rejected —
+// Telnyx requires the +359 prefix. Spaces, dashes, and parentheses are stripped
+// before validation and submission.
+private val PHONE_VALIDATION_RE = Regex("""^\+359\d{9}$""")
+private fun normalizePhone(raw: String): String = raw.replace(Regex("""[\s\-()]"""), "")
+private fun isValidPhone(raw: String): Boolean = normalizePhone(raw).matches(PHONE_VALIDATION_RE)
+
 @Composable
 private fun PhoneCollectionBar(onSubmit: (String) -> Unit) {
     var phoneText by remember { mutableStateOf("") }
+    var phoneError by remember { mutableStateOf<String?>(null) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -420,7 +428,10 @@ private fun PhoneCollectionBar(onSubmit: (String) -> Unit) {
         ) {
             TextField(
                 value = phoneText,
-                onValueChange = { phoneText = it },
+                onValueChange = {
+                    phoneText = it
+                    phoneError = null
+                },
                 placeholder = { Text("+359 88 ...", color = Zinc600, fontSize = 14.sp) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true,
@@ -441,11 +452,25 @@ private fun PhoneCollectionBar(onSubmit: (String) -> Unit) {
                     .size(44.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(if (phoneText.isNotBlank()) Purple600 else Purple600.copy(alpha = 0.3f))
-                    .clickable(enabled = phoneText.isNotBlank()) { onSubmit(phoneText.trim()) },
+                    .clickable(enabled = phoneText.isNotBlank()) {
+                        val trimmed = phoneText.trim()
+                        if (isValidPhone(trimmed)) {
+                            onSubmit(normalizePhone(trimmed))
+                        } else {
+                            phoneError = "Въведи с +359, без нулата — например: +359879052660"
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.ArrowForward, contentDescription = "Потвърди", tint = Color.White, modifier = Modifier.size(18.dp))
             }
+        }
+        if (phoneError != null) {
+            Text(
+                text = phoneError!!,
+                color = Red400,
+                fontSize = 11.sp,
+            )
         }
     }
 }

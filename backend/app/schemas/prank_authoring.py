@@ -1,7 +1,14 @@
+import re
 from enum import Enum
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+
+# Accepted phone format (after stripping spaces, dashes, parentheses):
+#   +359XXXXXXXXX  — international format, 9 digits after country code
+# Local format (0XXXXXXXXX) is NOT accepted — Telnyx requires +359 prefix.
+_PHONE_RE = re.compile(r"^\+359\d{9}$")
 
 
 class PrankType(str, Enum):
@@ -194,6 +201,17 @@ class SendMessageResponse(BaseModel):
 
 class SetPhoneRequest(BaseModel):
     phone: str
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone_format(cls, v: str) -> str:
+        # Normalize: strip spaces, dashes, and parentheses (keep + prefix if present)
+        normalized = re.sub(r"[\s\-()]", "", v)
+        if not _PHONE_RE.match(normalized):
+            raise ValueError(
+                "Невалиден телефонен номер — въведи с +359, без нулата (пример: +359879052660)"
+            )
+        return normalized
 
 
 # ---------- history / summary models ----------
