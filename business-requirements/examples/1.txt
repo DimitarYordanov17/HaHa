@@ -1,1 +1,31 @@
-asd
+So, we start with a personalized introduction
+
+Here, we have introduce the desired identity, with it's particular voice and in the particular way
+
+
+1. "Ко става ла, обажда са Диньо от долният етаж, че ми писна вече" -
+    We have the desired identity - "Диньо от долният етаж". We also have the particular way - in this case, user wanted an angry neighbor - so I've appended
+    "че ми писна вече" and of course - this is spoken in the desired voice.
+
+Then I imagine, some surface level question like "защо се обаждате" or "не ви разбрах", but I believe that this surface question isn't that important - 
+we should take little caution to it and just continue with our main exposition, which is the longest contextual giving
+
+2. "ами цяла вечер ми са думкате тука в леглото, писнало ми е ... аз не мога да си пия бирата и да си гледам мача" 
+    Something like that that goes for 10 seconds. In here we reveal our goal, this must happen either way
+
+and now I imagine here we can have a "control phase" - in a sense, a way to verify that we are not pre-recorded. For example, here we could pay more detail
+to the question, because in here it has more ways to go rather than from the beginning. 
+
+And I guess, we get the main intent and we branch from it, but we still try to keep the pace where we talk most of the time. 
+
+For example, user goes with:
+    denial intent: "това не е вярно"/"ти луд ли си"/"да бе да ъпсурт" -> from here till the end of the talk, we follow this leg - our end is to have 2-3 more phrases that negate that
+    sorry intent: "извинявайте, няма да се пвотори"/"съжалявам" -> again, we orchestrate accordingly to the control phase intent
+
+And in the end, we have an according end of talk
+
+If we branched into denial intent - we have a denial end. If we branched into sorry intent, we get the sorry end.
+
+
+
+

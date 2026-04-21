@@ -47,3 +47,19 @@ slightly irritated
 too enthusiastic
 
 Humour engineering
+
+
+IN the end, seems like we have a main categorization as prank type:
+
+1. Chaos Generator
+    - something weird, meaningless, maybe will focus on calmer voices or weirder ones. 
+2. Structured Reality
+    - fake system engagement. Looks more formal -> "избрани сте за гей на годината".
+3. Mistaken Continuation
+    - again nonsense, but starting like we know the topic
+4. Reverse Concern
+    - worried about them for something absurd
+5. Micro accusation
+    - you have made something weird. Mild blame + unclear clause
+6. Useless offer
+    - something pointless, but treated seriously 
